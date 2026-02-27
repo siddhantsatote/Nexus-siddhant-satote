@@ -1201,6 +1201,49 @@ body {
   font-size: 10px !important;
 }
 
-.leaflet-control-attribution a {
-  color: var(--text-muted) !important;
+/* Driver Tooltip */
+.driver-tooltip {
+  background: var(--bg-secondary) !important;
+  border: 1px solid var(--border-default) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.5) !important;
+  padding: 0 !important;
 }
+
+.driver-tooltip::before {
+  border-top-color: var(--border-default) !important;
+}
+
+.custom-marker {
+  transition: all 0.3s ease;
+}
+
+  .driver-marker:hover {
+    transform: scale(1.2);
+    z-index: 1000 !important;
+  }
+  
+  /* Polyline Animations */
+  .leaflet-interactive {
+    stroke-dashoffset: 0;
+    animation: dash-flow 20s linear infinite;
+  }
+  
+  @keyframes dash-flow {
+    from {
+      stroke-dashoffset: 1000;
+    }
+    to {
+      stroke-dashoffset: 0;
+    }
+  }
+  
+  /* Specific styles for ambulance and hospital routes */
+  .amb-route {
+    filter: drop-shadow(0 0 4px var(--p2-color));
+  }
+  
+  .hosp-route {
+    filter: drop-shadow(0 0 4px var(--accent-purple));
+  }
+

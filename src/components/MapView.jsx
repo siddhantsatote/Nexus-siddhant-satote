@@ -6,7 +6,39 @@ import { useNavigation } from '../hooks/useNavigation';
 import { fetchNearbyHospitals, fetchRoute } from '../lib/externalMaps';
 
 // Custom icon creators
-function createIcon(color, size = 12) {
+function createIcon(color, size = 12, isDriver = false) {
+  if (isDriver) {
+    return L.divIcon({
+      className: 'custom-marker driver-marker',
+      html: `<div style="
+        width: ${size}px;
+        height: ${size}px;
+        background: #fff;
+        border-radius: 50%;
+        border: 2px solid ${color};
+        box-shadow: 0 0 15px ${color}60;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      ">
+        <svg xmlns="http://www.w3.org/2000/svg" width="${size - 6}" height="${size - 6}" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        <div style="
+          position: absolute;
+          bottom: -2px;
+          right: -2px;
+          width: 8px;
+          height: 8px;
+          background: ${color};
+          border-radius: 50%;
+          border: 1px solid white;
+        "></div>
+      </div>`,
+      iconSize: [size, size],
+      iconAnchor: [size / 2, size / 2],
+      popupAnchor: [0, -size / 2 - 4],
+    });
+  }
   return L.divIcon({
     className: 'custom-marker',
     html: `<div style="
@@ -24,10 +56,10 @@ function createIcon(color, size = 12) {
 }
 
 const ambulanceIcons = {
-  available: createIcon('#22c55e', 14),
-  dispatched: createIcon('#f59e0b', 14),
-  returning: createIcon('#3b82f6', 14),
-  offline: createIcon('#6b7280', 10),
+  available: createIcon('#22c55e', 18, true),
+  dispatched: createIcon('#f59e0b', 18, true),
+  returning: createIcon('#3b82f6', 18, true),
+  offline: createIcon('#6b7280', 14, true),
 };
 
 const hospitalIcon = createIcon('#8b5cf6', 16);
@@ -140,7 +172,8 @@ function HospitalRouteLayer({ incidents, externalHospitals, hospitals }) {
             weight: 3,
             opacity: 0.8,
             lineJoin: 'round',
-            dashArray: '5, 5'
+            dashArray: '5, 5',
+            className: 'hosp-route'
           }}
         >
           <Tooltip sticky direction="top" opacity={0.9}>
@@ -217,7 +250,8 @@ function NavigationLayer({ ambulances, incidents, hospitals }) {
             weight: 4,
             opacity: 0.6,
             lineJoin: 'round',
-            dashArray: '1, 8'
+            dashArray: '1, 8',
+            className: 'amb-route'
           }}
         >
           <Tooltip sticky direction="top" opacity={0.9}>
@@ -286,31 +320,49 @@ export default function MapView({ ambulances, hospitals, incidents }) {
           externalHospitals={externalHospitals}
         />
 
-        {/* Ambulance markers */}
-        {ambulances.filter(a => a.location_lat).map(amb => (
-          <Marker
-            key={`amb-${amb.id}`}
-            position={[amb.location_lat, amb.location_lng]}
-            icon={ambulanceIcons[amb.status] || ambulanceIcons.offline}
-          >
-            <Popup>
-              <div style={{ minWidth: 160 }}>
-                <strong>{amb.unit_code}</strong>
-                <span className={`type-badge ${amb.type?.toLowerCase()}`} style={{ marginLeft: 8 }}>
-                  {amb.type}
-                </span>
-                <br />
-                <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>
-                  {amb.driver_name} • {amb.zone}
-                </span>
-                <br />
-                <span className={`status-badge ${amb.status}`} style={{ marginTop: 4, display: 'inline-flex' }}>
-                  {amb.status}
-                </span>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+          {/* Ambulance markers */}
+          {ambulances.filter(a => a.location_lat).map(amb => (
+            <Marker
+              key={`amb-${amb.id}`}
+              position={[amb.location_lat, amb.location_lng]}
+              icon={ambulanceIcons[amb.status] || ambulanceIcons.offline}
+            >
+              <Tooltip 
+                permanent 
+                direction="top" 
+                offset={[0, -12]}
+                className="driver-tooltip"
+              >
+                <div style={{ 
+                  padding: '1px 6px', 
+                  fontSize: '0.65rem', 
+                  fontWeight: 800,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  color: 'white'
+                }}>
+                  <span style={{ fontSize: '9px' }}>👤</span> {amb.driver_name?.split(' ')[0]}
+                </div>
+              </Tooltip>
+              <Popup>
+                <div style={{ minWidth: 160 }}>
+                  <strong>{amb.unit_code}</strong>
+                  <span className={`type-badge ${amb.type?.toLowerCase()}`} style={{ marginLeft: 8 }}>
+                    {amb.type}
+                  </span>
+                  <br />
+                  <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                    Driver: {amb.driver_name} • {amb.zone}
+                  </span>
+                  <br />
+                  <span className={`status-badge ${amb.status}`} style={{ marginTop: 4, display: 'inline-flex' }}>
+                    {amb.status}
+                  </span>
+                </div>
+              </Popup>
+            </Marker>
+          ))}
 
         {/* Internal Hospital markers */}
         {hospitals.filter(h => h.location_lat).map(hosp => (
@@ -378,32 +430,38 @@ export default function MapView({ ambulances, hospitals, incidents }) {
       {/* Map legend */}
       <div className="map-legend">
         <div className="map-legend-item">
-          <span className="map-legend-dot" style={{ background: '#22c55e' }}></span>
-          Available
+          <div style={{ 
+            width: 14, height: 14, borderRadius: '50%', background: '#fff', 
+            border: '2px solid #22c55e', display: 'flex', alignItems: 'center', justifyContent: 'center' 
+          }}>
+            <span style={{ fontSize: '8px', color: '#22c55e' }}>👤</span>
+          </div>
+          Available Driver
         </div>
         <div className="map-legend-item">
-          <span className="map-legend-dot" style={{ background: '#f59e0b' }}></span>
-          Dispatched
-        </div>
-        <div className="map-legend-item">
-          <span className="map-legend-dot" style={{ background: '#3b82f6' }}></span>
-          Returning
+          <div style={{ 
+            width: 14, height: 14, borderRadius: '50%', background: '#fff', 
+            border: '2px solid #f59e0b', display: 'flex', alignItems: 'center', justifyContent: 'center' 
+          }}>
+            <span style={{ fontSize: '8px', color: '#f59e0b' }}>👤</span>
+          </div>
+          Dispatched Driver
         </div>
         <div className="map-legend-item">
           <span className="map-legend-dot" style={{ background: '#8b5cf6' }}></span>
-          Internal Hospital
-        </div>
-        <div className="map-legend-item">
-          <span className="map-legend-dot" style={{ background: '#a855f7' }}></span>
-          Live Hospital (OSM)
+          Hospital
         </div>
         <div className="map-legend-item">
           <span className="map-legend-dot" style={{ background: '#ef4444', boxShadow: '0 0 8px rgba(239,68,68,0.6)' }}></span>
           Incident
         </div>
         <div className="map-legend-item">
-          <div style={{ width: 12, height: 12, borderRadius: '50%', border: '1px dashed #8b5cf6', background: 'rgba(139, 92, 246, 0.1)', marginRight: 8 }}></div>
-          Hospital Route
+          <div style={{ width: 12, height: 12, borderRadius: '50%', border: '1px dashed #f59e0b', background: 'rgba(245, 158, 11, 0.1)', marginRight: 4 }}></div>
+          Amb Route
+        </div>
+        <div className="map-legend-item">
+          <div style={{ width: 12, height: 12, borderRadius: '50%', border: '1px dashed #8b5cf6', background: 'rgba(139, 92, 246, 0.1)', marginRight: 4 }}></div>
+          Hosp Route
         </div>
       </div>
     </div>

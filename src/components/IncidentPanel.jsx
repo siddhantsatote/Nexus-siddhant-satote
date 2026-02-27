@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { Send, Loader2, Clock, MapPin, ChevronDown, ChevronUp, Zap } from 'lucide-react';
-import { triageEmergency } from '../lib/praana-ai';
+import { triageEmergency, extractPuneCoords } from '../lib/praana-ai';
 import { useNavigation } from '../hooks/useNavigation';
 
 function timeAgo(dateStr) {
@@ -18,62 +18,98 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
   const [loading, setLoading] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [showJson, setShowJson] = useState(false);
-    const [saving, setSaving] = useState(false);
-    const { calculateETA } = useNavigation(ambulances, incidents, hospitals);
+  const [latestIncidentId, setLatestIncidentId] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const { calculateETA } = useNavigation(ambulances, incidents, hospitals);
 
-    const openIncidents = incidents.filter(i => i.status !== 'resolved');
+  const openIncidents = incidents.filter(i => i.status !== 'resolved');
 
-    // Compute ETAs for open incidents that have an assigned ambulance
-    const incidentEtas = useMemo(() => {
-      const etas = {};
-      incidents.filter(i => i.status === 'dispatched' && i.assigned_ambulance).forEach(inc => {
-        const amb = ambulances.find(a => a.id === inc.assigned_ambulance);
-        if (amb && amb.location_lat && inc.location_lat) {
-          const result = calculateETA(amb.location_lat, amb.location_lng, inc.location_lat, inc.location_lng);
-          if (result) etas[inc.id] = result.eta;
-        }
-      });
-      return etas;
-    }, [incidents, ambulances, calculateETA]);
+  // Compute ETAs for open incidents that have an assigned ambulance
+  const incidentEtas = useMemo(() => {
+    const etas = {};
+    incidents.filter(i => i.status === 'dispatched' && i.assigned_ambulance).forEach(inc => {
+      const amb = ambulances.find(a => a.id === inc.assigned_ambulance);
+      if (amb && amb.location_lat && inc.location_lat) {
+        const result = calculateETA(amb.location_lat, amb.location_lng, inc.location_lat, inc.location_lng);
+        if (result) etas[inc.id] = result.eta;
+      }
+    });
+    return etas;
+  }, [incidents, ambulances, calculateETA]);
 
-    async function handleSubmit(e) {
+  async function handleSubmit(e) {
 
-      e.preventDefault();
-      if (!description.trim()) return;
+    e.preventDefault();
+    if (!description.trim()) return;
 
-      setLoading(true);
-      setTriageResult(null);
+    setLoading(true);
+    setTriageResult(null);
+    setLatestIncidentId(null);
 
-      try {
-        const result = await triageEmergency(description, ambulances, hospitals);
-        setTriageResult(result);
+    try {
+      const result = await triageEmergency(description, ambulances, hospitals);
+      setTriageResult(result);
 
           // Add incident to the system
           if (result.triage) {
               setSaving(true);
-              // If no coordinates provided by AI (likely), assign random Pune-area coords for demo
-              const location_lat = result.triage.location?.lat || (18.45 + Math.random() * 0.15);
-              const location_lng = result.triage.location?.lng || (73.78 + Math.random() * 0.15);
+              // Try to extract Pune coords from description or AI result
+              const extracted = extractPuneCoords(description);
+              const location_lat = result.triage.location?.lat || extracted?.lat || (18.45 + Math.random() * 0.15);
+              const location_lng = result.triage.location?.lng || extracted?.lng || (73.78 + Math.random() * 0.15);
 
-            const newIncident = {
-              priority: result.triage.priority,
-              incident_type: result.triage.incident_type,
-              status: 'open',
-              caller_description: description,
-              ai_triage_json: result.triage,
-              location_raw: result.triage.location?.raw || description.slice(0, 100),
-              location_lat,
-              location_lng,
-            };
-            await addIncident(newIncident);
-            setSaving(false);
-          }
-      } catch (err) {
-        console.error('Triage error:', err);
-        setSaving(false);
-      }
-      setLoading(false);
+
+          const newIncident = {
+            priority: result.triage.priority,
+            incident_type: result.triage.incident_type,
+            status: 'open',
+            caller_description: description,
+            ai_triage_json: result.triage,
+            location_raw: result.triage.location?.raw || description.slice(0, 100),
+            location_lat,
+            location_lng,
+          };
+          const saved = await addIncident(newIncident);
+          if (saved) setLatestIncidentId(saved.id);
+          setSaving(false);
+        }
+    } catch (err) {
+      console.error('Triage error:', err);
+      setSaving(false);
     }
+    setLoading(false);
+  }
+
+  const handleDispatchNearest = (incident) => {
+    const available = ambulances.filter(a => a.status === 'available');
+    if (available.length > 0) {
+      // Find nearest available ambulance
+      let nearest = available[0];
+      let minDistance = Infinity;
+      
+      available.forEach(amb => {
+        const dist = Math.hypot(amb.location_lat - incident.location_lat, amb.location_lng - incident.location_lng);
+        if (dist < minDistance) {
+          minDistance = dist;
+          nearest = amb;
+        }
+      });
+
+      updateIncidentStatus(incident.id, { 
+        status: 'dispatched', 
+        dispatched_at: new Date().toISOString(),
+        assigned_ambulance: nearest.id 
+      });
+      updateAmbulanceStatus(nearest.id, 'dispatched');
+      
+      // Clear triage result and description after dispatch
+      setTriageResult(null);
+      setDescription('');
+      setLatestIncidentId(null);
+    } else {
+      alert('No ambulances available! Bring one online or mark one available in Fleet panel.');
+    }
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -134,25 +170,78 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
             </div>
           )}
 
-          {triageResult.triage?.first_aid_instructions && (
-            <div style={{
-              marginTop: 10,
-              padding: '8px 12px',
-              background: 'rgba(59, 130, 246, 0.08)',
-              borderRadius: 'var(--radius-md)',
-              fontSize: '0.78rem',
-              color: 'var(--accent-blue)',
-              border: '1px solid rgba(59, 130, 246, 0.15)'
-            }}>
-              <strong>📋 Relay to Caller:</strong> {triageResult.triage.first_aid_instructions}
-            </div>
-          )}
+            {triageResult.triage?.first_aid_instructions && (
+              <div style={{
+                marginTop: 10,
+                padding: '8px 12px',
+                background: 'rgba(59, 130, 246, 0.08)',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.78rem',
+                color: 'var(--accent-blue)',
+                border: '1px solid rgba(59, 130, 246, 0.15)'
+              }}>
+                <strong>📋 Relay to Caller:</strong> {triageResult.triage.first_aid_instructions}
+              </div>
+            )}
 
-          <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
-            <button className="btn btn-sm btn-primary" onClick={() => { setTriageResult(null); setDescription(''); }}>
-              ✓ Accept & Clear
-            </button>
-          </div>
+            {/* Nearest Driver Recommendation */}
+            {(() => {
+                const available = ambulances.filter(a => a.status === 'available');
+                if (available.length > 0 && triageResult.triage?.location) {
+                    const incLat = triageResult.triage.location.lat || (18.45 + Math.random() * 0.15);
+                    const incLng = triageResult.triage.location.lng || (73.78 + Math.random() * 0.15);
+                    
+                    let nearest = available[0];
+                    let minDistance = Infinity;
+                    available.forEach(amb => {
+                        const dist = Math.hypot(amb.location_lat - incLat, amb.location_lng - incLng);
+                        if (dist < minDistance) {
+                            minDistance = dist;
+                            nearest = amb;
+                        }
+                    });
+
+                    return (
+                        <div style={{
+                            marginTop: 10,
+                            padding: '8px 12px',
+                            background: 'rgba(34, 197, 94, 0.08)',
+                            borderRadius: 'var(--radius-md)',
+                            fontSize: '0.78rem',
+                            color: 'var(--accent-green)',
+                            border: '1px solid rgba(34, 197, 94, 0.15)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between'
+                        }}>
+                            <div>
+                                <strong>📍 Nearest Driver:</strong> {nearest.driver_name} ({nearest.unit_code})
+                            </div>
+                            <span style={{ fontSize: '0.65rem', fontWeight: 600 }}>READY TO DISPATCH</span>
+                        </div>
+                    );
+                }
+                return null;
+            })()}
+
+            <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+              {latestIncidentId ? (
+                <button 
+                  className="btn btn-sm btn-primary" 
+                  onClick={() => {
+                    const incident = incidents.find(i => i.id === latestIncidentId);
+                    if (incident) handleDispatchNearest(incident);
+                  }}
+                >
+                  🚀 Dispatch Nearest Unit
+                </button>
+              ) : (
+                <button className="btn btn-sm btn-primary" onClick={() => { setTriageResult(null); setDescription(''); }}>
+                  ✓ Accept & Clear
+                </button>
+              )}
+            </div>
+
         </div>
       )}
 
@@ -234,22 +323,13 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
                   {expandedId === inc.id && (
                     <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border-default)', display: 'flex', gap: 8 }}>
                       {inc.status === 'open' && (
-                        <button className="btn btn-sm btn-primary" onClick={(e) => { 
-                          e.stopPropagation(); 
-                          const available = ambulances.filter(a => a.status === 'available');
-                          if (available.length > 0) {
-                            updateIncidentStatus(inc.id, { 
-                              status: 'dispatched', 
-                              dispatched_at: new Date().toISOString(),
-                              assigned_ambulance: available[0].id 
-                            });
-                            updateAmbulanceStatus(available[0].id, 'dispatched');
-                          } else {
-                            alert('No ambulances available! Bring one online or mark one available in Fleet panel.');
-                          }
-                        }}>
-                          Dispatch Available Unit
-                        </button>
+                          <button className="btn btn-sm btn-primary" onClick={(e) => { 
+                            e.stopPropagation(); 
+                            handleDispatchNearest(inc);
+                          }}>
+                            Dispatch Nearest Unit
+                          </button>
+
                       )}
                       {inc.status === 'dispatched' && (
                         <button className="btn btn-sm" onClick={(e) => { 

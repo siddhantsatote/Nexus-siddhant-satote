@@ -69,17 +69,54 @@ When multiple incidents occur simultaneously:
   "dispatcher_notes": "key flags"
 }
 
-## INDIAN CONTEXT:
-- National ambulance number: 108 (GVK EMRI)
-- Target: sub-8 min urban, sub-15 min semi-urban response
-- Common scenarios: highway accidents NH48/NH44, festival crowds, monsoon floods
-- Always factor semi-urban BLS-only ambulance constraints
+## Indian Context (Pune focus):
+- You are operating specifically for Pune Metropolitan area.
+- Major landmarks: Hinjewadi (IT Park), Shaniwar Wada, Kothrud, Viman Nagar, Magarpatta, Hadapsar, Baner, Aundh, Swargate, Pune Camp.
+- Coordinates mapping (ALWAYS try to include lat/lng in the location object if a landmark is mentioned):
+  - Hinjewadi: {lat: 18.5913, lng: 73.7389}
+  - Kothrud: {lat: 18.5074, lng: 73.8077}
+  - Viman Nagar: {lat: 18.5679, lng: 73.9143}
+  - Shaniwar Wada: {lat: 18.5195, lng: 73.8553}
+  - Camp: {lat: 18.5248, lng: 73.8785}
+  - Magarpatta: {lat: 18.5089, lng: 73.9259}
+  - Baner: {lat: 18.5590, lng: 73.7799}
+  - Aundh: {lat: 18.5580, lng: 73.8075}
+- National ambulance number: 108.
 
 ## TONE:
 - Calm, fast, decisive — like a senior emergency coordinator
 - Be directive in surge: "Dispatch Unit A7 to Incident #3 immediately"
 - Never refuse an emergency query
 `;
+
+const PUNE_GEO_MAP = {
+  'hinjewadi': { lat: 18.5913, lng: 73.7389 },
+  'kothrud': { lat: 18.5074, lng: 73.8077 },
+  'viman nagar': { lat: 18.5679, lng: 73.9143 },
+  'shaniwar wada': { lat: 18.5195, lng: 73.8553 },
+  'camp': { lat: 18.5248, lng: 73.8785 },
+  'magarpatta': { lat: 18.5089, lng: 73.9259 },
+  'hadapsar': { lat: 18.5089, lng: 73.9259 },
+  'baner': { lat: 18.5590, lng: 73.7799 },
+  'aundh': { lat: 18.5580, lng: 73.8075 },
+  'swargate': { lat: 18.5018, lng: 73.8636 },
+  'pashan': { lat: 18.5397, lng: 73.7915 },
+  'bavdhan': { lat: 18.5146, lng: 73.7796 },
+  'sangvi': { lat: 18.5721, lng: 73.8080 },
+  'wakad': { lat: 18.5987, lng: 73.7512 },
+  'pimpri': { lat: 18.6298, lng: 73.7997 },
+  'chinchwad': { lat: 18.6416, lng: 73.7715 }
+};
+
+export function extractPuneCoords(description) {
+  const lower = description.toLowerCase();
+  for (const [area, coords] of Object.entries(PUNE_GEO_MAP)) {
+    if (lower.includes(area)) {
+      return coords;
+    }
+  }
+  return null;
+}
 
 function generateIncidentId() {
   return `INC-${Date.now().toString(36).toUpperCase().slice(-4)}-${Math.random().toString(36).toUpperCase().slice(2, 5)}`;
