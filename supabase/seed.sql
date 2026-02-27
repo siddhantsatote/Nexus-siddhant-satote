@@ -2,27 +2,6 @@
 -- PRAANA-AI — Supabase Schema & Seed Data (PUNE FOCUSED)
 -- ============================================================
 
--- Call Logs table (for Vapi.ai incoming calls)
-CREATE TABLE IF NOT EXISTS call_logs (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  vapi_call_id text,
-  caller_phone text,
-  caller_name text,
-  callback_number text,
-  transcript text,
-  summary text,
-  priority text CHECK (priority IN ('P1', 'P2', 'P3')),
-  incident_type text,
-  location_raw text,
-  patient_count int DEFAULT 1,
-  patient_condition text,
-  call_duration int DEFAULT 0,
-  call_status text DEFAULT 'completed',
-  linked_incident_id uuid,
-  raw_payload jsonb,
-  created_at timestamptz DEFAULT now()
-);
-
 -- Ambulances table
 CREATE TABLE IF NOT EXISTS ambulances (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),

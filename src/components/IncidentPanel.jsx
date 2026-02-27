@@ -20,6 +20,12 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
   const [showJson, setShowJson] = useState(false);
   const [latestIncidentId, setLatestIncidentId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [isManualMode, setIsManualMode] = useState(false);
+  const [manualData, setManualData] = useState({
+    location: '',
+    category: 'accident',
+    priority: 'P2'
+  });
   const { calculateETA } = useNavigation(ambulances, incidents, hospitals);
 
   const openIncidents = incidents.filter(i => i.status !== 'resolved');
@@ -80,8 +86,47 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
     setLoading(false);
   }
 
+  async function handleManualSubmit(e) {
+    e.preventDefault();
+    if (!manualData.location.trim()) return;
+
+    setLoading(true);
+    try {
+      const extracted = extractPuneCoords(manualData.location);
+      const location_lat = extracted?.lat || (18.45 + Math.random() * 0.15);
+      const location_lng = extracted?.lng || (73.78 + Math.random() * 0.15);
+
+      const newIncident = {
+        priority: manualData.priority,
+        incident_type: manualData.category,
+        status: 'open',
+        caller_description: `[Manual Entry] ${manualData.location}`,
+        location_raw: manualData.location,
+        location_lat,
+        location_lng,
+      };
+
+      const saved = await addIncident(newIncident);
+      if (saved) {
+        setManualData({ location: '', category: 'accident', priority: 'P2' });
+      }
+    } catch (err) {
+      console.error('Manual entry error:', err);
+    }
+    setLoading(false);
+  }
+
   const handleDispatchNearest = (incident) => {
-    const available = ambulances.filter(a => a.status === 'available');
+    // Prevent assigning the same ambulance/driver to multiple active incidents
+    const busyAmbulanceIds = new Set(
+      incidents
+        .filter(i => i.status !== 'resolved' && i.assigned_ambulance)
+        .map(i => i.assigned_ambulance)
+    );
+
+    const available = ambulances.filter(
+      a => a.status === 'available' && !busyAmbulanceIds.has(a.id)
+    );
     if (available.length > 0) {
       // Find nearest available ambulance
       let nearest = available[0];
@@ -113,30 +158,104 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-      {/* Emergency Input */}
-      <div className="emergency-input">
-        <div style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--p1-color)' }}>
-          📞 Incoming Emergency Call
-        </div>
-        <form onSubmit={handleSubmit}>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-              placeholder="Describe the emergency… e.g. 'Man collapsed near Shaniwar Wada, not breathing, appears to be in cardiac arrest. Bystanders performing CPR.'"
-            disabled={loading}
-            id="emergency-description"
-          />
-          <div className="emergency-input-actions">
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              AI will auto-triage and recommend dispatch
-            </span>
-            <button type="submit" className="btn btn-primary" disabled={loading || !description.trim()} id="submit-triage-btn">
-              {loading ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
-              {saving ? 'Saving to Cloud…' : loading ? 'Analyzing…' : 'Triage & Dispatch'}
-            </button>
-          </div>
-        </form>
+      {/* Mode Toggle */}
+      <div className="panel-tabs" style={{ marginBottom: 12 }}>
+        <button 
+          className={`tab-btn ${!isManualMode ? 'active' : ''}`}
+          onClick={() => setIsManualMode(false)}
+        >
+          AI Coordinator
+        </button>
+        <button 
+          className={`tab-btn ${isManualMode ? 'active' : ''}`}
+          onClick={() => setIsManualMode(true)}
+        >
+          Manual Entry
+        </button>
       </div>
+
+      {/* Emergency Input */}
+      {!isManualMode ? (
+        <div className="emergency-input">
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--p1-color)' }}>
+            📞 Incoming Emergency Call
+          </div>
+          <form onSubmit={handleSubmit}>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+                placeholder="Describe the emergency… e.g. 'Man collapsed near Shaniwar Wada, not breathing, appears to be in cardiac arrest. Bystanders performing CPR.'"
+              disabled={loading}
+              id="emergency-description"
+            />
+            <div className="emergency-input-actions">
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                AI will auto-triage and recommend dispatch
+              </span>
+              <button type="submit" className="btn btn-primary" disabled={loading || !description.trim()} id="submit-triage-btn">
+                {loading ? <Loader2 size={14} className="spin" /> : <Send size={14} />}
+                {saving ? 'Saving to Cloud…' : loading ? 'Analyzing…' : 'Triage & Dispatch'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : (
+        <div className="emergency-input">
+          <div style={{ fontSize: '0.8rem', fontWeight: 700, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, color: 'var(--accent-blue)' }}>
+            📝 Rapid Incident Entry
+          </div>
+          <form onSubmit={handleManualSubmit}>
+            <div style={{ display: 'grid', gap: 10 }}>
+              <input
+                type="text"
+                className="input-field"
+                placeholder="Location (e.g. Hinjewadi, Camp)"
+                value={manualData.location}
+                onChange={(e) => setManualData({ ...manualData, location: e.target.value })}
+                required
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <select 
+                  className="input-field"
+                  value={manualData.category}
+                  onChange={(e) => setManualData({ ...manualData, category: e.target.value })}
+                  style={{ flex: 1 }}
+                >
+                  <option value="cardiac">Cardiac</option>
+                  <option value="trauma">Trauma</option>
+                  <option value="accident">Accident</option>
+                  <option value="burns">Burns</option>
+                  <option value="respiratory">Respiratory</option>
+                  <option value="other">Other</option>
+                </select>
+                <div style={{ display: 'flex', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-md)', padding: 2 }}>
+                  {['P1', 'P2', 'P3'].map(p => (
+                    <button
+                      key={p}
+                      type="button"
+                      className={`btn btn-sm ${manualData.priority === p ? 'btn-primary' : ''}`}
+                      style={{ 
+                        padding: '4px 10px', 
+                        fontSize: '0.7rem',
+                        background: manualData.priority === p ? `var(--${p.toLowerCase()}-bg)` : 'transparent',
+                        color: manualData.priority === p ? `var(--${p.toLowerCase()}-color)` : 'var(--text-muted)',
+                        borderColor: 'transparent'
+                      }}
+                      onClick={() => setManualData({ ...manualData, priority: p })}
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <button type="submit" className="btn btn-primary" disabled={loading || !manualData.location.trim()} style={{ background: 'var(--accent-blue)', borderColor: 'var(--accent-blue)' }}>
+                {loading ? <Loader2 size={14} className="spin" /> : <Zap size={14} />}
+                Add Incident
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {/* Triage Result */}
       {triageResult && (

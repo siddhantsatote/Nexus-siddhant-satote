@@ -115,20 +115,20 @@ function MapBounds({ ambulances, hospitals, externalHospitals, incidents }) {
 
 function HospitalRouteLayer({ incidents, externalHospitals, hospitals }) {
   const [hospitalRoutes, setHospitalRoutes] = useState([]);
+  const routeCache = useRef({});
 
   useEffect(() => {
     const fetchAllRoutes = async () => {
-      const activeIncidents = incidents.filter(i => i.status === 'dispatched' && i.location_lat);
-      const newRoutes = [];
-
-      for (const inc of activeIncidents) {
+      const activeIncidents = incidents.filter(i => (i.status === 'dispatched' || i.status === 'open') && i.location_lat);
+      
+      const routePromises = activeIncidents.map(async (inc) => {
         // Find nearest hospital from both internal and external lists
         const allHospitals = [
           ...hospitals.filter(h => h && h.location_lat && h.location_lng).map(h => ({ name: h.name, lat: h.location_lat, lng: h.location_lng, source: 'internal' })),
           ...externalHospitals.filter(h => h && h.lat && h.lng).map(h => ({ name: h.name, lat: h.lat, lng: h.lng, source: 'external' }))
         ];
 
-        if (allHospitals.length === 0) continue;
+        if (allHospitals.length === 0) return null;
 
         let nearestHosp = null;
         let minDist = Infinity;
@@ -142,18 +142,26 @@ function HospitalRouteLayer({ incidents, externalHospitals, hospitals }) {
         });
 
         if (nearestHosp) {
+          const cacheKey = `hosp-${inc.id}-${nearestHosp.lat}-${nearestHosp.lng}`;
+          if (routeCache.current[cacheKey]) return routeCache.current[cacheKey];
+
           const route = await fetchRoute([inc.location_lat, inc.location_lng], [nearestHosp.lat, nearestHosp.lng]);
           if (route) {
-            newRoutes.push({
+            const data = {
               id: `hosp-route-${inc.id}`,
               points: route.geometry,
               hospital: nearestHosp.name,
               eta: Math.round(route.duration / 60)
-            });
+            };
+            routeCache.current[cacheKey] = data;
+            return data;
           }
         }
-      }
-      setHospitalRoutes(newRoutes);
+        return null;
+      });
+
+      const results = await Promise.all(routePromises);
+      setHospitalRoutes(results.filter(Boolean));
     };
 
     if (incidents.length > 0) {
@@ -189,26 +197,50 @@ function HospitalRouteLayer({ incidents, externalHospitals, hospitals }) {
 
 function AmbulanceRouteLayer({ ambulances, incidents }) {
   const [ambRoutes, setAmbRoutes] = useState([]);
+  const routeCache = useRef({});
 
   useEffect(() => {
     const fetchAllRoutes = async () => {
-      const activeIncidents = incidents.filter(i => i.status === 'dispatched' && i.assigned_ambulance && i.location_lat);
-      const newRoutes = [];
+      const activeIncidents = incidents.filter(i => i.location_lat && (i.status === 'dispatched' || i.status === 'open'));
+      
+      const routePromises = activeIncidents.map(async (inc) => {
+        let amb = null;
+        if (inc.status === 'dispatched' && inc.assigned_ambulance) {
+          amb = ambulances.find(a => a.id === inc.assigned_ambulance);
+        } else if (inc.status === 'open') {
+          // For open incidents, find nearest available ambulance to show anticipated route
+          const available = ambulances.filter(a => a.status === 'available' && a.location_lat);
+          let minDist = Infinity;
+          available.forEach(a => {
+            const d = Math.hypot(a.location_lat - inc.location_lat, a.location_lng - inc.location_lng);
+            if (d < minDist) {
+              minDist = d;
+              amb = a;
+            }
+          });
+        }
 
-      for (const inc of activeIncidents) {
-        const amb = ambulances.find(a => a.id === inc.assigned_ambulance);
-        if (amb && amb.location_lat && amb.location_lng && inc.location_lat && inc.location_lng) {
+        if (amb && amb.location_lat && inc.location_lat) {
+          const cacheKey = `amb-${inc.id}-${amb.id}-${amb.location_lat}-${amb.location_lng}`;
+          if (routeCache.current[cacheKey]) return routeCache.current[cacheKey];
+
           const route = await fetchRoute([amb.location_lat, amb.location_lng], [inc.location_lat, inc.location_lng]);
           if (route) {
-            newRoutes.push({
+            const data = {
               id: `amb-route-${inc.id}`,
               points: route.geometry,
-              eta: Math.round(route.duration / 60)
-            });
+              eta: Math.round(route.duration / 60),
+              isAnticipated: inc.status === 'open'
+            };
+            routeCache.current[cacheKey] = data;
+            return data;
           }
         }
-      }
-      setAmbRoutes(newRoutes);
+        return null;
+      });
+
+      const results = await Promise.all(routePromises);
+      setAmbRoutes(results.filter(Boolean));
     };
 
     if (incidents.length > 0) {
@@ -223,12 +255,13 @@ function AmbulanceRouteLayer({ ambulances, incidents }) {
           key={route.id}
           positions={route.points}
           pathOptions={{
-            color: '#f59e0b', // Orange for ambulance route
-            weight: 5,
-            opacity: 0.8,
+            color: route.isAnticipated ? '#94a3b8' : '#f59e0b', // Muted color for anticipated
+            weight: route.isAnticipated ? 3 : 5,
+            dashArray: route.isAnticipated ? '10, 10' : '0',
+            opacity: route.isAnticipated ? 0.5 : 0.8,
             lineJoin: 'round',
             lineCap: 'round',
-            className: 'amb-route'
+            className: route.isAnticipated ? 'amb-route anticipated' : 'amb-route'
           }}
         >
           <Tooltip sticky direction="top" opacity={0.9}>

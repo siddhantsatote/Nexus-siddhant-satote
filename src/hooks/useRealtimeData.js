@@ -6,7 +6,6 @@ export function useRealtimeData() {
   const [ambulances, setAmbulances] = useState([]);
   const [hospitals, setHospitals] = useState([]);
   const [incidents, setIncidents] = useState([]);
-  const [callLogs, setCallLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [usingDemo, setUsingDemo] = useState(false);
 
@@ -26,11 +25,10 @@ export function useRealtimeData() {
 
   async function loadSupabaseData() {
     try {
-      const [ambRes, hospRes, incRes, callRes] = await Promise.all([
+      const [ambRes, hospRes, incRes] = await Promise.all([
         supabase.from('ambulances').select('*').order('unit_code'),
         supabase.from('hospitals').select('*').order('name'),
         supabase.from('incidents').select('*').order('created_at', { ascending: false }),
-        supabase.from('call_logs').select('*').order('created_at', { ascending: false }),
       ]);
 
       if (ambRes.error || hospRes.error || incRes.error) {
@@ -40,7 +38,6 @@ export function useRealtimeData() {
       setAmbulances(ambRes.data);
       setHospitals(hospRes.data);
       setIncidents(incRes.data);
-      setCallLogs(callRes.data || []);
       setUsingDemo(false);
     } catch (err) {
       console.warn('Supabase load failed, using demo data:', err);
@@ -74,12 +71,6 @@ export function useRealtimeData() {
           if (payload.eventType === 'INSERT') setIncidents(prev => [payload.new, ...prev]);
           if (payload.eventType === 'UPDATE') setIncidents(prev => prev.map(i => i.id === payload.new.id ? payload.new : i));
           if (payload.eventType === 'DELETE') setIncidents(prev => prev.filter(i => i.id !== payload.old.id));
-        })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'call_logs' },
-        (payload) => {
-          if (payload.eventType === 'INSERT') setCallLogs(prev => [payload.new, ...prev]);
-          if (payload.eventType === 'UPDATE') setCallLogs(prev => prev.map(c => c.id === payload.new.id ? payload.new : c));
-          if (payload.eventType === 'DELETE') setCallLogs(prev => prev.filter(c => c.id !== payload.old.id));
         })
       .subscribe();
   }
@@ -156,7 +147,6 @@ export function useRealtimeData() {
     ambulances,
     hospitals,
     incidents,
-    callLogs,
     loading,
     usingDemo,
     addIncident,

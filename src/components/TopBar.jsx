@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Phone, AlertCircle, Activity, Truck, Building2 } from 'lucide-react';
+import { Phone, AlertCircle, Activity, Truck, Building2, ArrowLeft } from 'lucide-react';
 
-export default function TopBar({ incidents, ambulances, hospitals, onNewEmergency }) {
+export default function TopBar({ incidents, ambulances, hospitals, onNewEmergency, onBack }) {
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -17,6 +17,12 @@ export default function TopBar({ incidents, ambulances, hospitals, onNewEmergenc
   return (
     <header className="topbar">
       <div className="topbar-left">
+        {onBack && (
+          <button className="btn btn-sm" style={{ fontSize: '0.75rem' }} onClick={onBack}>
+            <ArrowLeft size={14} />
+            Back
+          </button>
+        )}
         <button className="btn-emergency" onClick={onNewEmergency} id="new-emergency-btn">
           <Phone size={16} />
           New Emergency
