@@ -1,7 +1,10 @@
 import { useState, useMemo } from 'react';
 import { Send, Loader2, Clock, MapPin, ChevronDown, ChevronUp, Zap } from 'lucide-react';
 import { triageEmergency, extractPuneCoords } from '../lib/praana-ai';
+import { fetchRoute } from '../lib/externalMaps';
 import { useNavigation } from '../hooks/useNavigation';
+import { startAmbulanceMovement } from '../lib/ambulanceSimulation';
+import { haversineDistance } from '../lib/navigation';
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';
@@ -12,7 +15,7 @@ function timeAgo(dateStr) {
   return `${Math.floor(mins / 60)}h ${mins % 60}m ago`;
 }
 
-export default function IncidentPanel({ incidents, ambulances, hospitals, addIncident, updateIncidentStatus, updateAmbulanceStatus }) {
+export default function IncidentPanel({ incidents, ambulances, hospitals, addIncident, updateIncidentStatus, updateAmbulanceStatus, updateAmbulanceLocation }) {
   const [description, setDescription] = useState('');
   const [triageResult, setTriageResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -20,6 +23,7 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
   const [showJson, setShowJson] = useState(false);
   const [latestIncidentId, setLatestIncidentId] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [isAutoDispatchEnabled, setIsAutoDispatchEnabled] = useState(true);
   const [isManualMode, setIsManualMode] = useState(false);
   const [manualData, setManualData] = useState({
     location: '',
@@ -30,17 +34,20 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
 
   const openIncidents = incidents.filter(i => i.status !== 'resolved');
 
-  // Compute ETAs for open incidents that have an assigned ambulance
-  const incidentEtas = useMemo(() => {
+  const [incidentEtas, setIncidentEtas] = useState({});
+
+  // Compute ETAs for dispatched incidents
+  useMemo(async () => {
     const etas = {};
-    incidents.filter(i => i.status === 'dispatched' && i.assigned_ambulance).forEach(inc => {
+    const dispatched = incidents.filter(i => i.status === 'dispatched' && i.assigned_ambulance);
+    for (const inc of dispatched) {
       const amb = ambulances.find(a => a.id === inc.assigned_ambulance);
-      if (amb && amb.location_lat && inc.location_lat) {
-        const result = calculateETA(amb.location_lat, amb.location_lng, inc.location_lat, inc.location_lng);
+      if (amb?.location_lat && inc.location_lat) {
+        const result = await calculateETA(amb.location_lat, amb.location_lng, inc.location_lat, inc.location_lng);
         if (result) etas[inc.id] = result.eta;
       }
-    });
-    return etas;
+    }
+    setIncidentEtas(etas);
   }, [incidents, ambulances, calculateETA]);
 
   async function handleSubmit(e) {
@@ -76,7 +83,12 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
             location_lng,
           };
           const saved = await addIncident(newIncident);
-          if (saved) setLatestIncidentId(saved.id);
+          if (saved) {
+            setLatestIncidentId(saved.id);
+            if (isAutoDispatchEnabled) {
+              handleDispatchNearest(saved);
+            }
+          }
           setSaving(false);
         }
     } catch (err) {
@@ -109,6 +121,9 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
       const saved = await addIncident(newIncident);
       if (saved) {
         setManualData({ location: '', category: 'accident', priority: 'P2' });
+        if (isAutoDispatchEnabled) {
+          handleDispatchNearest(saved);
+        }
       }
     } catch (err) {
       console.error('Manual entry error:', err);
@@ -116,42 +131,160 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
     setLoading(false);
   }
 
+  /**
+   * Weighted multi-factor dispatch scoring algorithm.
+   * Scores each ambulance on: distance (50%), type match (30%), zone familiarity (20%).
+   * Hospital matching uses: distance (40%), ICU beds (25%), trauma (20%), cardiac cath (15%).
+   */
   const handleDispatchNearest = (incident) => {
-    // Prevent assigning the same ambulance/driver to multiple active incidents
-    const busyAmbulanceIds = new Set(
-      incidents
-        .filter(i => i.status !== 'resolved' && i.assigned_ambulance)
-        .map(i => i.assigned_ambulance)
-    );
+    // 1. Guard: Don't dispatch if already dispatched or assigned
+    if (incident.status === 'dispatched' || incident.status === 'enroute' || incident.status === 'on-site' || incident.assigned_ambulance) {
+      console.warn(`Incident ${incident.id} is already dispatched/assigned. Ignoring redundant call.`);
+      return;
+    }
 
-    const available = ambulances.filter(
-      a => a.status === 'available' && !busyAmbulanceIds.has(a.id)
-    );
+    // 2. CRITICAL: Prevent assigning the same ambulance/driver to multiple active incidents
+    const busyAmbulanceIds = new Set();
+    
+    incidents.forEach(inc => {
+      if ((inc.status === 'dispatched' || 
+           inc.status === 'enroute' || 
+           inc.status === 'on-site' ||
+           inc.status === 'returning') && 
+          inc.assigned_ambulance) {
+        busyAmbulanceIds.add(inc.assigned_ambulance);
+      }
+    });
+
+    // 3. Filter available ambulances - must be "available" status AND not in busy set
+    const available = ambulances.filter(a => {
+      const isAvailableStatus = a.status === 'available';
+      const isNotBusy = !busyAmbulanceIds.has(a.id);
+      return isAvailableStatus && isNotBusy;
+    });
+    
     if (available.length > 0) {
-      // Find nearest available ambulance
-      let nearest = available[0];
-      let minDistance = Infinity;
+      // ── Weighted Multi-Factor Dispatch Scoring ──
+      // Weights: Distance 50% | Type Match 30% | Zone Familiarity 20%
+      const W_DIST = 0.50, W_TYPE = 0.30, W_ZONE = 0.20;
       
-      available.forEach(amb => {
-        const dist = Math.hypot(amb.location_lat - incident.location_lat, amb.location_lng - incident.location_lng);
-        if (dist < minDistance) {
-          minDistance = dist;
-          nearest = amb;
-        }
+      const distances = available.map(a => 
+        haversineDistance(a.location_lat, a.location_lng, incident.location_lat, incident.location_lng)
+      );
+      const maxDist = Math.max(...distances, 0.1); // avoid div-by-zero
+
+      const scoredAmbulances = available.map((a, i) => {
+        // Distance score: closer = higher (inverted, normalized 0-1)
+        const distScore = 1 - (distances[i] / maxDist);
+        
+        // Type match score: ALS for P1, BLS for P2/P3
+        let typeScore = 0.5; // neutral
+        if (incident.priority === 'P1' && a.type === 'ALS') typeScore = 1.0;
+        else if (incident.priority === 'P1' && a.type !== 'ALS') typeScore = 0.1;
+        else if (incident.priority !== 'P1' && a.type === 'BLS') typeScore = 0.9;
+        else if (incident.priority !== 'P1' && a.type === 'ALS') typeScore = 0.6; // ALS is over-qualified but fine
+        
+        // Zone familiarity: bonus if ambulance zone matches incident area
+        const incidentArea = (incident.location_raw || '').toLowerCase();
+        const ambZone = (a.zone || '').toLowerCase();
+        const zoneScore = incidentArea.includes(ambZone) || ambZone.includes(incidentArea.split(' ')[0]) ? 1.0 : 0.3;
+        
+        const totalScore = (distScore * W_DIST) + (typeScore * W_TYPE) + (zoneScore * W_ZONE);
+        
+        return { ambulance: a, score: totalScore, distKm: distances[i] };
       });
 
-      updateIncidentStatus(incident.id, { 
-        status: 'dispatched', 
-        dispatched_at: new Date().toISOString(),
-        assigned_ambulance: nearest.id 
-      });
+      scoredAmbulances.sort((a, b) => b.score - a.score);
+      const nearest = scoredAmbulances[0].ambulance;
+      
+      console.info(`🔢 Dispatch scoring: Top pick ${nearest.unit_code} (score: ${scoredAmbulances[0].score.toFixed(3)}, dist: ${scoredAmbulances[0].distKm.toFixed(2)}km)`);
+      if (scoredAmbulances.length > 1) {
+        console.debug(`   Runner-up: ${scoredAmbulances[1].ambulance.unit_code} (score: ${scoredAmbulances[1].score.toFixed(3)})`);
+      }
+
+      // ── Composite Hospital Matching ──
+      // Weights: Distance 40% | ICU Beds 25% | Trauma Capability 20% | Cardiac Cath 15%
+      const H_DIST = 0.40, H_ICU = 0.25, H_TRAUMA = 0.20, H_CARDIAC = 0.15;
+      
+      const availableHospitals = hospitals.filter(h => h.location_lat && h.location_lng);
+      let bestHospital = null;
+      
+      if (availableHospitals.length > 0) {
+        const hospDistances = availableHospitals.map(h => 
+          haversineDistance(h.location_lat, h.location_lng, incident.location_lat, incident.location_lng)
+        );
+        const maxHospDist = Math.max(...hospDistances, 0.1);
+        const maxIcu = Math.max(...availableHospitals.map(h => h.icu_beds_available || 0), 1);
+
+        const scoredHospitals = availableHospitals.map((h, i) => {
+          const distScore = 1 - (hospDistances[i] / maxHospDist);
+          const icuScore = (h.icu_beds_available || 0) / maxIcu;
+          const traumaScore = h.trauma_capable ? 1.0 : 0.0;
+          const cardiacScore = (incident.incident_type === 'cardiac' && h.cardiac_cath) ? 1.0 : 
+                               h.cardiac_cath ? 0.5 : 0.0;
+          
+          const total = (distScore * H_DIST) + (icuScore * H_ICU) + (traumaScore * H_TRAUMA) + (cardiacScore * H_CARDIAC);
+          return { hospital: h, score: total, distKm: hospDistances[i] };
+        });
+
+        scoredHospitals.sort((a, b) => b.score - a.score);
+        bestHospital = scoredHospitals[0].hospital;
+        console.info(`🏥 Hospital match: ${bestHospital.name} (score: ${scoredHospitals[0].score.toFixed(3)}, dist: ${scoredHospitals[0].distKm.toFixed(2)}km)`);
+      }
+
       updateAmbulanceStatus(nearest.id, 'dispatched');
+      
+      // Fetch both routes (Amb->Inc and Inc->Hosp) for stable mapping
+      console.log(`🚑 Initializing stable routes for ${nearest.unit_code}...`);
+      
+      const startLocation = [nearest.location_lat, nearest.location_lng];
+      const incidentPos = [incident.location_lat, incident.location_lng];
+      const hospPos = bestHospital ? [bestHospital.location_lat, bestHospital.location_lng] : null;
+
+      Promise.all([
+        fetchRoute(startLocation, incidentPos),
+        hospPos ? fetchRoute(incidentPos, hospPos) : Promise.resolve(null)
+      ]).then(([ambRoute, hospRoute]) => {
+        const dispatchPath = ambRoute?.geometry || null;
+        const hospitalPath = hospRoute?.geometry || null;
+        
+        // Update incident with stable routes
+        updateIncidentStatus(incident.id, { 
+          status: 'dispatched', 
+          dispatched_at: new Date().toISOString(),
+          assigned_ambulance: nearest.id,
+          assigned_hospital: bestHospital?.id || null,
+          dispatch_route: dispatchPath,
+          hospital_route: hospitalPath
+        });
+
+        const durationSeconds = ambRoute?.duration 
+          ? Math.max(30, Math.ceil(ambRoute.duration / 3)) // Factor of 3 for demo simulation speed
+          : Math.max(60, Math.ceil(Math.hypot(incidentPos[0] - startLocation[0], incidentPos[1] - startLocation[1]) * 111 / 0.9 * 60));
+
+        console.log(`🚑 Starting path-following simulation for ${nearest.unit_code}`);
+        
+        startAmbulanceMovement(
+          nearest.id,
+          nearest.location_lat,
+          nearest.location_lng,
+          incident.location_lat,
+          incident.location_lng,
+          updateAmbulanceLocation,
+          durationSeconds,
+          1500, // Update every 1.5 seconds
+          dispatchPath
+        ).then(() => {
+          console.log(`✓ Ambulance ${nearest.unit_code} reached incident location`);
+          updateIncidentStatus(incident.id, { status: 'on-site' });
+        });
+      });
       
       // Clear triage result and description after dispatch
       setTriageResult(null);
       setDescription('');
       setLatestIncidentId(null);
-    } else {
+    } else if (!isAutoDispatchEnabled) {
       alert('No ambulances available! Bring one online or mark one available in Fleet panel.');
     }
   };
@@ -159,19 +292,45 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Mode Toggle */}
-      <div className="panel-tabs" style={{ marginBottom: 12 }}>
-        <button 
-          className={`tab-btn ${!isManualMode ? 'active' : ''}`}
-          onClick={() => setIsManualMode(false)}
+      <div className="panel-tabs" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex' }}>
+          <button 
+            className={`tab-btn ${!isManualMode ? 'active' : ''}`}
+            onClick={() => setIsManualMode(false)}
+          >
+            AI Coordinator
+          </button>
+          <button 
+            className={`tab-btn ${isManualMode ? 'active' : ''}`}
+            onClick={() => setIsManualMode(true)}
+          >
+            Manual Entry
+          </button>
+        </div>
+        
+        <div 
+          onClick={() => setIsAutoDispatchEnabled(!isAutoDispatchEnabled)}
+          style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: 6, 
+            cursor: 'pointer',
+            padding: '4px 8px',
+            background: isAutoDispatchEnabled ? 'rgba(34, 197, 94, 0.1)' : 'rgba(156, 163, 175, 0.1)',
+            borderRadius: 6,
+            transition: 'all 0.2s'
+          }}
         >
-          AI Coordinator
-        </button>
-        <button 
-          className={`tab-btn ${isManualMode ? 'active' : ''}`}
-          onClick={() => setIsManualMode(true)}
-        >
-          Manual Entry
-        </button>
+          <div style={{ 
+            width: 8, height: 8, 
+            borderRadius: '50%', 
+            background: isAutoDispatchEnabled ? 'var(--accent-green)' : 'var(--text-muted)',
+            boxShadow: isAutoDispatchEnabled ? '0 0 8px var(--accent-green)' : 'none'
+          }}></div>
+          <span style={{ fontSize: '0.65rem', fontWeight: 800, color: isAutoDispatchEnabled ? 'var(--accent-green)' : 'var(--text-muted)' }}>
+            AUTO-DISPATCH: {isAutoDispatchEnabled ? 'ON' : 'OFF'}
+          </span>
+        </div>
       </div>
 
       {/* Emergency Input */}
@@ -458,12 +617,43 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
                           </button>
 
                       )}
-                      {inc.status === 'dispatched' && (
+                      {['dispatched', 'enroute', 'on-site'].includes(inc.status) && (
                         <button className="btn btn-sm" onClick={(e) => { 
                           e.stopPropagation(); 
+                          const ambId = inc.assigned_ambulance;
+                          const amb = ambulances.find(a => a.id === ambId);
+                          
                           updateIncidentStatus(inc.id, { status: 'resolved', resolved_at: new Date().toISOString() });
-                          if (inc.assigned_ambulance) {
-                            updateAmbulanceStatus(inc.assigned_ambulance, 'returning');
+                          
+                          if (ambId) {
+                            updateAmbulanceStatus(ambId, 'returning');
+                            
+                            // Trigger return-to-base simulation
+                            if (amb && amb.base_lat && amb.base_lng) {
+                              console.log(`🚑 Triggering return-to-base for ${amb.unit_code}...`);
+                              
+                              fetchRoute([amb.location_lat, amb.location_lng], [amb.base_lat, amb.base_lng]).then(routeData => {
+                                const path = routeData?.geometry || null;
+                                const durationSeconds = routeData?.duration 
+                                  ? Math.max(30, Math.ceil(routeData.duration / 3))
+                                  : 60;
+
+                                startAmbulanceMovement(
+                                  ambId,
+                                  amb.location_lat,
+                                  amb.location_lng,
+                                  amb.base_lat,
+                                  amb.base_lng,
+                                  updateAmbulanceLocation,
+                                  durationSeconds,
+                                  2000,
+                                  path
+                                ).then(() => {
+                                  console.log(`✓ Ambulance ${amb.unit_code} returned to base`);
+                                  updateAmbulanceStatus(ambId, 'available');
+                                });
+                              });
+                            }
                           }
                         }}>
                           Resolve & Release

@@ -15,7 +15,11 @@ export function useRealtimeData() {
       loadSupabaseData();
       subscribeToChanges();
     } else {
-      setAmbulances(DEMO_AMBULANCES);
+      setAmbulances(DEMO_AMBULANCES.map(a => ({
+        ...a,
+        base_lat: a.location_lat,
+        base_lng: a.location_lng
+      })));
       setHospitals(DEMO_HOSPITALS);
       setIncidents(DEMO_INCIDENTS);
       setUsingDemo(true);
@@ -35,13 +39,23 @@ export function useRealtimeData() {
         throw new Error(ambRes.error?.message || hospRes.error?.message || incRes.error?.message);
       }
 
-      setAmbulances(ambRes.data);
+      const ambWithHome = ambRes.data.map(a => ({
+        ...a,
+        base_lat: a.location_lat,
+        base_lng: a.location_lng
+      }));
+
+      setAmbulances(ambWithHome);
       setHospitals(hospRes.data);
       setIncidents(incRes.data);
       setUsingDemo(false);
     } catch (err) {
       console.warn('Supabase load failed, using demo data:', err);
-      setAmbulances(DEMO_AMBULANCES);
+      setAmbulances(DEMO_AMBULANCES.map(a => ({
+        ...a,
+        base_lat: a.location_lat,
+        base_lng: a.location_lng
+      })));
       setHospitals(DEMO_HOSPITALS);
       setIncidents(DEMO_INCIDENTS);
       setUsingDemo(true);
@@ -115,6 +129,21 @@ export function useRealtimeData() {
     }
   }, []);
 
+  const updateAmbulanceLocation = useCallback(async (ambId, lat, lng) => {
+    // Optimistic update
+    setAmbulances(prev => prev.map(a => a.id === ambId ? { ...a, location_lat: lat, location_lng: lng } : a));
+
+    if (isSupabaseConfigured()) {
+      const { error } = await supabase
+        .from('ambulances')
+        .update({ location_lat: lat, location_lng: lng })
+        .eq('id', ambId);
+      if (error) {
+        console.error('Update ambulance location error:', error);
+      }
+    }
+  }, []);
+
   const updateIncidentStatus = useCallback(async (incId, updates) => {
     // Optimistic update
     setIncidents(prev => prev.map(i => i.id === incId ? { ...i, ...updates } : i));
@@ -143,6 +172,72 @@ export function useRealtimeData() {
     }
   }, []);
 
+  const resetAmbulancePositions = useCallback(async () => {
+    // Reset to defaults from DEMO_AMBULANCES
+    const updates = DEMO_AMBULANCES.map(demo => ({
+      id: demo.id,
+      location_lat: demo.location_lat,
+      location_lng: demo.location_lng,
+      status: 'available'
+    }));
+
+    // Optimistic update
+    setAmbulances(prev => prev.map(a => {
+      const demo = DEMO_AMBULANCES.find(d => d.id === a.id);
+      if (demo) {
+        return { ...a, location_lat: demo.location_lat, location_lng: demo.location_lng, status: 'available' };
+      }
+      return a;
+    }));
+
+    if (isSupabaseConfigured()) {
+      for (const up of updates) {
+        await supabase
+          .from('ambulances')
+          .update({ 
+            location_lat: up.location_lat, 
+            location_lng: up.location_lng,
+            status: 'available'
+          })
+          .eq('id', up.id);
+      }
+    }
+  }, []);
+
+  const deleteAmbulance = useCallback(async (ambId) => {
+    // Optimistic update
+    setAmbulances(prev => prev.filter(a => a.id !== ambId));
+
+    if (isSupabaseConfigured()) {
+      try {
+        // Step 1: Unassign this ambulance from all incidents
+        const { error: unassignError } = await supabase
+          .from('incidents')
+          .update({ assigned_ambulance: null, assigned_hospital: null })
+          .eq('assigned_ambulance', ambId);
+        
+        if (unassignError) {
+          console.error('Error unassigning ambulance from incidents:', unassignError);
+          alert('Error unassigning ambulance from incidents: ' + unassignError.message);
+          loadSupabaseData();
+          return;
+        }
+
+        // Step 2: Delete the ambulance
+        const { error: deleteError } = await supabase.from('ambulances').delete().eq('id', ambId);
+        if (deleteError) {
+          console.error('Delete ambulance error:', deleteError);
+          alert('Error deleting ambulance: ' + deleteError.message);
+          // Rollback optimistic update
+          loadSupabaseData();
+        }
+      } catch (err) {
+        console.error('Unexpected error during deletion:', err);
+        loadSupabaseData();
+      }
+    }
+  }, [loadSupabaseData]);
+
   return {
     ambulances,
     hospitals,
@@ -151,7 +246,10 @@ export function useRealtimeData() {
     usingDemo,
     addIncident,
     updateAmbulanceStatus,
+    updateAmbulanceLocation,
     updateIncidentStatus,
     setAllAmbulancesAvailable,
+    resetAmbulancePositions,
+    deleteAmbulance,
   };
 }

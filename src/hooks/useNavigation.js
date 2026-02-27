@@ -1,45 +1,22 @@
-import { useMemo, useCallback } from 'react';
-import { NavigationGraph } from '../lib/navigation';
+import { useCallback } from 'react';
+import { fetchRoute } from '../lib/externalMaps';
 
-export function useNavigation(ambulances, incidents, hospitals) {
-  const graph = useMemo(() => {
-    const points = [...ambulances, ...incidents, ...hospitals];
-    const allLat = points.map(p => p.location_lat).filter(l => typeof l === 'number' && !isNaN(l));
-    const allLng = points.map(p => p.location_lng).filter(l => typeof l === 'number' && !isNaN(l));
-    
-    if (allLat.length === 0) return null;
-
-    const bounds = [
-      Math.min(...allLat) - 0.2,
-      Math.min(...allLng) - 0.2,
-      Math.max(...allLat) + 0.2,
-      Math.max(...allLng) + 0.2
-    ];
-
-    const g = new NavigationGraph(bounds, 0.02);
-
-    // Dynamic traffic around P1 incidents
-    incidents
-      .filter(i => i.priority === 'P1' && typeof i.location_lat === 'number')
-      .forEach(i => g.updateTraffic(i.location_lat, i.location_lng, 0.05, 10.0));
-
-    return g;
-  }, [ambulances, incidents, hospitals]);
-
-  const calculateETA = useCallback((fromLat, fromLng, toLat, toLng) => {
-    if (!graph) return null;
+export function useNavigation() {
+  const calculateETA = useCallback(async (fromLat, fromLng, toLat, toLng) => {
     try {
-      const path = graph.findPath(fromLat, fromLng, toLat, toLng);
-      if (!path || path.length === 0) return null;
+      const route = await fetchRoute([fromLat, fromLng], [toLat, toLng]);
+      if (!route) return null;
+
       return {
-        path,
-        eta: graph.estimateTime(path)
+        path: route.geometry,
+        eta: Math.round(route.duration / 60),
+        distance: route.distance
       };
     } catch (err) {
       console.error('Pathfinding failed:', err);
       return null;
     }
-  }, [graph]);
+  }, []);
 
-  return { graph, calculateETA };
+  return { calculateETA };
 }

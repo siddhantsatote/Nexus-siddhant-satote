@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { MapPin, Phone, AlertCircle, CheckCircle2, Loader2, ArrowRight, ShieldCheck, HeartPulse } from 'lucide-react';
 import { extractPuneCoords } from '../lib/praana-ai';
 import MapView from './MapView';
@@ -62,37 +63,50 @@ export default function BookingPortal({ addIncident, ambulances, hospitals, inci
           </button>
         )}
         {step === 1 && (
-          <div className="booking-step fade-in">
+          <motion.div
+            className="booking-step"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            transition={{ duration: 0.35 }}
+          >
             <div className="booking-header">
               <h1>Emergency Help Needed?</h1>
               <p>Quickly book an ambulance. Track in real-time.</p>
             </div>
             
             <div className="category-grid">
-              {categories.map(cat => (
-                <div 
+              {categories.map((cat, i) => (
+                <motion.div 
                   key={cat.id} 
                   className={`category-item ${formData.category === cat.id ? 'active' : ''}`}
                   onClick={() => setFormData({ ...formData, category: cat.id })}
+                  whileHover={{ scale: 1.04, y: -4 }}
+                  whileTap={{ scale: 0.97 }}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.08, duration: 0.3 }}
                 >
                   <div className="cat-icon" style={{ backgroundColor: cat.color }}>
                     <cat.icon size={24} color="white" />
                   </div>
                   <span>{cat.label}</span>
-                </div>
+                </motion.div>
               ))}
             </div>
 
             <div className="booking-actions">
-              <button 
+              <motion.button 
                 className="btn btn-primary btn-large w-full" 
                 disabled={!formData.category}
                 onClick={() => setStep(2)}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
               >
                 Next Step <ArrowRight size={18} />
-              </button>
+              </motion.button>
             </div>
-          </div>
+          </motion.div>
         )}
 
         {step === 2 && (
@@ -147,10 +161,20 @@ export default function BookingPortal({ addIncident, ambulances, hospitals, inci
         )}
 
         {step === 3 && (
-          <div className="booking-step fade-in text-center">
-            <div className="success-icon">
+          <motion.div
+            className="booking-step text-center"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ type: 'spring', stiffness: 200, damping: 20 }}
+          >
+            <motion.div
+              className="success-icon"
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.15, type: 'spring', stiffness: 300, damping: 15 }}
+            >
               <CheckCircle2 size={64} color="var(--status-available)" />
-            </div>
+            </motion.div>
             <h1>Ambulance Dispatched!</h1>
             <p className="booking-status-text">
               Reference: <span className="ref-code">#{bookingRef}</span>
@@ -183,15 +207,8 @@ export default function BookingPortal({ addIncident, ambulances, hospitals, inci
             <button className="btn btn-secondary w-full" onClick={() => { setStep(1); setFormData({ location: '', category: '', contact: '', additionalInfo: '' }); }}>
               Book Another
             </button>
-          </div>
+          </motion.div>
         )}
-      </div>
-
-      <div className="booking-footer">
-        <p>Connected to Pune Emergency Network (108)</p>
-        <div className="emergency-links">
-          <span>Privacy</span> • <span>Help Center</span> • <span>Contact Us</span>
-        </div>
       </div>
     </div>
   );

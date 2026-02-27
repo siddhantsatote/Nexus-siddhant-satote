@@ -2,8 +2,9 @@ import { useEffect, useRef, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { useNavigation } from '../hooks/useNavigation';
 import { fetchNearbyHospitals, fetchRoute } from '../lib/externalMaps';
+import { useNavigation } from '../hooks/useNavigation';
+import { RefreshCcw, Navigation, RotateCcw } from 'lucide-react';
 
 // Custom icon creators
 function createIcon(color, size = 12, isDriver = false) {
@@ -83,6 +84,13 @@ const incidentIcons = {
         0%,100% { box-shadow: 0 0 10px rgba(239,68,68,0.4); }
         50% { box-shadow: 0 0 25px rgba(239,68,68,0.8); }
       }
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      .spinning-once {
+        animation: spin 0.5s ease-in-out;
+      }
     </style>`,
     iconSize: [18, 18],
     iconAnchor: [9, 9],
@@ -92,10 +100,16 @@ const incidentIcons = {
   P3: createIcon('#22c55e', 12),
 };
 
-function MapBounds({ ambulances, hospitals, externalHospitals, incidents }) {
+function MapBounds({ ambulances, hospitals, externalHospitals, incidents, refreshKey }) {
   const map = useMap();
+  const hasInitialized = useRef(false);
 
   useEffect(() => {
+    // Only auto-fit on:
+    // 1. Initial load
+    // 2. Manual refresh (refreshKey change)
+    // 3. Number of incidents or hospitals changes (new emergency added)
+    
     const allCoords = [
       ...ambulances.filter(a => a && a.location_lat && a.location_lng).map(a => [a.location_lat, a.location_lng]),
       ...hospitals.filter(h => h && h.location_lat && h.location_lng).map(h => [h.location_lat, h.location_lng]),
@@ -103,54 +117,76 @@ function MapBounds({ ambulances, hospitals, externalHospitals, incidents }) {
       ...incidents.filter(i => i && i.location_lat && i.location_lng).map(i => [i.location_lat, i.location_lng]),
     ];
 
-    if (allCoords.length > 1) {
-      map.fitBounds(allCoords, { padding: [40, 40], maxZoom: 12 });
-    } else if (allCoords.length === 1) {
-      map.setView(allCoords[0], 12);
+    if (allCoords.length > 0) {
+      if (allCoords.length > 1) {
+        map.fitBounds(allCoords, { padding: [40, 40], maxZoom: 12 });
+      } else {
+        map.setView(allCoords[0], 12);
+      }
     }
-  }, [ambulances, hospitals, externalHospitals, incidents]);
+  }, [incidents.length, hospitals.length, externalHospitals.length, refreshKey]);
 
   return null;
 }
 
-function HospitalRouteLayer({ incidents, externalHospitals, hospitals }) {
+function HospitalRouteLayer({ incidents, externalHospitals, hospitals, refreshKey }) {
   const [hospitalRoutes, setHospitalRoutes] = useState([]);
   const routeCache = useRef({});
 
   useEffect(() => {
+    routeCache.current = {};
+  }, [refreshKey]);
+
+  useEffect(() => {
     const fetchAllRoutes = async () => {
       const activeIncidents = incidents.filter(i => (i.status === 'dispatched' || i.status === 'open') && i.location_lat);
+      console.log('📍 Hospital route layer - Active incidents:', activeIncidents.length);
       
       const routePromises = activeIncidents.map(async (inc) => {
-        // Find nearest hospital from both internal and external lists
-        const allHospitals = [
-          ...hospitals.filter(h => h && h.location_lat && h.location_lng).map(h => ({ name: h.name, lat: h.location_lat, lng: h.location_lng, source: 'internal' })),
-          ...externalHospitals.filter(h => h && h.lat && h.lng).map(h => ({ name: h.name, lat: h.lat, lng: h.lng, source: 'external' }))
-        ];
+        // Use pre-fetched stable route if available
+        if (inc.hospital_route) {
+          const hInfo = hospitals.find(h => h.id === inc.assigned_hospital) || externalHospitals.find(h => h.id === inc.assigned_hospital);
+          return {
+            id: `hosp-route-${inc.id}`,
+            points: inc.hospital_route,
+            hospital: hInfo?.name || 'Hospital',
+            eta: Math.round(Math.hypot(inc.location_lat - (hInfo?.location_lat || hInfo?.lat || 0), inc.location_lng - (hInfo?.location_lng || hInfo?.lng || 0)) * 111 / 15 * 60)
+          };
+        }
 
-        if (allHospitals.length === 0) return null;
-
-        let nearestHosp = null;
-        let minDist = Infinity;
-
-        allHospitals.forEach(h => {
-          const d = Math.hypot(h.lat - inc.location_lat, h.lng - inc.location_lng);
-          if (d < minDist) {
-            minDist = d;
-            nearestHosp = h;
+        let targetHosp = null;
+        if (inc.assigned_hospital) {
+          targetHosp = hospitals.find(h => h.id === inc.assigned_hospital);
+          if (targetHosp) {
+            targetHosp = { name: targetHosp.name, lat: targetHosp.location_lat, lng: targetHosp.location_lng };
+          } else {
+            targetHosp = externalHospitals.find(h => h.id === inc.assigned_hospital);
           }
-        });
+        }
 
-        if (nearestHosp) {
-          const cacheKey = `hosp-${inc.id}-${nearestHosp.lat}-${nearestHosp.lng}`;
-          if (routeCache.current[cacheKey]) return routeCache.current[cacheKey];
+        if (!targetHosp) {
+          const allHospitals = [
+            ...hospitals.filter(h => h && h.location_lat && h.location_lng).map(h => ({ name: h.name, lat: h.location_lat, lng: h.location_lng })),
+            ...externalHospitals.filter(h => h && h.lat && h.lng).map(h => ({ name: h.name, lat: h.lat, lng: h.lng }))
+          ];
+          if (allHospitals.length === 0) return null;
+          let minDist = Infinity;
+          allHospitals.forEach(h => {
+            const d = Math.hypot(h.lat - inc.location_lat, h.lng - inc.location_lng);
+            if (d < minDist) { minDist = d; targetHosp = h; }
+          });
+        }
 
-          const route = await fetchRoute([inc.location_lat, inc.location_lng], [nearestHosp.lat, nearestHosp.lng]);
+        if (targetHosp) {
+          const cacheKey = `hosp-${inc.id}-${targetHosp.lat}-${targetHosp.lng}`;
+          if (cacheKey in routeCache.current) return routeCache.current[cacheKey];
+
+          const route = await fetchRoute([inc.location_lat, inc.location_lng], [targetHosp.lat, targetHosp.lng]);
           if (route) {
             const data = {
               id: `hosp-route-${inc.id}`,
               points: route.geometry,
-              hospital: nearestHosp.name,
+              hospital: targetHosp.name,
               eta: Math.round(route.duration / 60)
             };
             routeCache.current[cacheKey] = data;
@@ -161,49 +197,87 @@ function HospitalRouteLayer({ incidents, externalHospitals, hospitals }) {
       });
 
       const results = await Promise.all(routePromises);
-      setHospitalRoutes(results.filter(Boolean));
+      const validRoutes = results.filter(Boolean);
+      console.log('📊 Hospital routes ready:', validRoutes.length);
+      setHospitalRoutes(validRoutes);
     };
 
     if (incidents.length > 0) {
       fetchAllRoutes();
     }
-  }, [incidents, externalHospitals, hospitals]);
+  }, [incidents, externalHospitals, hospitals, refreshKey]);
 
   return (
     <>
-      {hospitalRoutes.map(route => (
-        <Polyline
-          key={route.id}
-          positions={route.points}
-          pathOptions={{
-            color: '#8b5cf6', // Purple for hospital route
-            weight: 4,
-            opacity: 0.9,
-            lineJoin: 'round',
-            lineCap: 'round',
-            className: 'hosp-route'
-          }}
-        >
-          <Tooltip sticky direction="top" opacity={0.9}>
-            <div style={{ padding: '2px 6px', fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: '10px' }}>🏥</span> Route to {route.hospital} ({route.eta}m)
-            </div>
-          </Tooltip>
-        </Polyline>
-      ))}
+      {hospitalRoutes.map(route => {
+        if (!route || !route.points || route.points.length < 2) return null;
+        return (
+          <Polyline
+            key={route.id}
+            positions={route.points}
+            pathOptions={{
+              color: '#8b5cf6', // Purple for hospital route
+              weight: 4,
+              opacity: 0.9,
+              lineJoin: 'round',
+              lineCap: 'round',
+              className: 'hosp-route'
+            }}
+          >
+            <Tooltip sticky direction="top" opacity={0.9}>
+              <div style={{ padding: '2px 6px', fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: '10px' }}>🏥</span> Route to {route.hospital} ({route.eta}m)
+              </div>
+            </Tooltip>
+          </Polyline>
+        );
+      })}
     </>
   );
 }
 
-function AmbulanceRouteLayer({ ambulances, incidents }) {
+function AmbulanceRouteLayer({ ambulances, incidents, refreshKey, calculateETA }) {
   const [ambRoutes, setAmbRoutes] = useState([]);
   const routeCache = useRef({});
+
+  const [incidentEtas, setIncidentEtas] = useState({});
+
+  useEffect(() => {
+    const fetchEtas = async () => {
+      const etas = {};
+      const dispatched = incidents.filter(i => i.status === 'dispatched' && i.assigned_ambulance);
+      for (const inc of dispatched) {
+        const amb = ambulances.find(a => a.id === inc.assigned_ambulance);
+        if (amb?.location_lat && inc.location_lat) {
+          const result = await calculateETA(amb.location_lat, amb.location_lng, inc.location_lat, inc.location_lng);
+          if (result) etas[inc.id] = result.eta;
+        }
+      }
+      setIncidentEtas(etas);
+    };
+    fetchEtas();
+  }, [incidents, ambulances, calculateETA]);
+
+  useEffect(() => {
+    routeCache.current = {};
+  }, [refreshKey]);
 
   useEffect(() => {
     const fetchAllRoutes = async () => {
       const activeIncidents = incidents.filter(i => i.location_lat && (i.status === 'dispatched' || i.status === 'open'));
+      console.log('🚑 Ambulance route layer - Active incidents:', activeIncidents.length);
       
       const routePromises = activeIncidents.map(async (inc) => {
+        // Use pre-fetched dispatch route if available (highly efficient)
+        if (inc.dispatch_route) {
+          return {
+            id: `amb-route-${inc.id}`,
+            points: inc.dispatch_route,
+            eta: incidentEtas[inc.id] || 0,
+            isAnticipated: false
+          };
+        }
+
         let amb = null;
         if (inc.status === 'dispatched' && inc.assigned_ambulance) {
           amb = ambulances.find(a => a.id === inc.assigned_ambulance);
@@ -222,8 +296,12 @@ function AmbulanceRouteLayer({ ambulances, incidents }) {
 
         if (amb && amb.location_lat && inc.location_lat) {
           const cacheKey = `amb-${inc.id}-${amb.id}-${amb.location_lat}-${amb.location_lng}`;
-          if (routeCache.current[cacheKey]) return routeCache.current[cacheKey];
+          if (cacheKey in routeCache.current) {
+            console.log('  (cached)');
+            return routeCache.current[cacheKey];
+          }
 
+          console.log(`  Fetching ambulance route for ${amb.unit_code}...`);
           const route = await fetchRoute([amb.location_lat, amb.location_lng], [inc.location_lat, inc.location_lng]);
           if (route) {
             const data = {
@@ -233,50 +311,67 @@ function AmbulanceRouteLayer({ ambulances, incidents }) {
               isAnticipated: inc.status === 'open'
             };
             routeCache.current[cacheKey] = data;
+            console.log(`  ✓ Ambulance route created: ${route.geometry.length} points`);
             return data;
+          } else {
+            // Cache the failure to avoid repeated requests
+            routeCache.current[cacheKey] = null;
+            console.log(`  ✗ Route fetch failed`);
           }
         }
         return null;
       });
 
       const results = await Promise.all(routePromises);
-      setAmbRoutes(results.filter(Boolean));
+      const validRoutes = results.filter(Boolean);
+      console.log('📊 Ambulance routes ready:', validRoutes.length);
+      setAmbRoutes(validRoutes);
     };
 
     if (incidents.length > 0) {
       fetchAllRoutes();
     }
-  }, [incidents, ambulances]);
+  }, [incidents, ambulances, refreshKey]);
 
   return (
     <>
-      {ambRoutes.map(route => (
-        <Polyline
-          key={route.id}
-          positions={route.points}
-          pathOptions={{
-            color: route.isAnticipated ? '#94a3b8' : '#f59e0b', // Muted color for anticipated
-            weight: route.isAnticipated ? 3 : 5,
-            dashArray: route.isAnticipated ? '10, 10' : '0',
-            opacity: route.isAnticipated ? 0.5 : 0.8,
-            lineJoin: 'round',
-            lineCap: 'round',
-            className: route.isAnticipated ? 'amb-route anticipated' : 'amb-route'
-          }}
-        >
-          <Tooltip sticky direction="top" opacity={0.9}>
-            <div style={{ padding: '2px 6px', fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: '10px' }}>⚡</span> ETA: {route.eta}m
-            </div>
-          </Tooltip>
-        </Polyline>
-      ))}
+      {ambRoutes.map(route => {
+        if (!route || !route.points || route.points.length < 2) return null;
+        return (
+          <Polyline
+            key={route.id}
+            positions={route.points}
+            pathOptions={{
+              color: route.isAnticipated ? '#94a3b8' : '#f59e0b', // Muted color for anticipated
+              weight: route.isAnticipated ? 3 : 5,
+              dashArray: route.isAnticipated ? '10, 10' : '0',
+              opacity: route.isAnticipated ? 0.5 : 0.8,
+              lineJoin: 'round',
+              lineCap: 'round',
+              className: route.isAnticipated ? 'amb-route anticipated' : 'amb-route'
+            }}
+          >
+            <Tooltip sticky direction="top" opacity={0.9}>
+              <div style={{ padding: '2px 6px', fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{ fontSize: '10px' }}>⚡</span> ETA: {route.eta}m
+              </div>
+            </Tooltip>
+          </Polyline>
+        );
+      })}
     </>
   );
 }
 
-export default function MapView({ ambulances, hospitals, incidents }) {
+export default function MapView({ ambulances, hospitals, incidents, resetAmbulancePositions }) {
   const [externalHospitals, setExternalHospitals] = useState([]);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const { calculateETA } = useNavigation(ambulances, incidents, hospitals);
+
+  const handleRefresh = () => {
+    setRefreshKey(prev => prev + 1);
+    setExternalHospitals([]);
+  };
 
   // Fetch real-time hospitals when incidents occur
   useEffect(() => {
@@ -296,7 +391,7 @@ export default function MapView({ ambulances, hospitals, incidents }) {
     };
 
     fetchHospitals();
-  }, [incidents]);
+  }, [incidents, refreshKey]);
 
   return (
     <div className="map-container">
@@ -316,17 +411,21 @@ export default function MapView({ ambulances, hospitals, incidents }) {
           hospitals={hospitals} 
           externalHospitals={externalHospitals}
           incidents={incidents} 
+          refreshKey={refreshKey}
         />
         
         <AmbulanceRouteLayer 
           ambulances={ambulances} 
           incidents={incidents} 
+          refreshKey={refreshKey}
+          calculateETA={calculateETA}
         />
 
         <HospitalRouteLayer 
           incidents={incidents}
           hospitals={hospitals}
           externalHospitals={externalHospitals}
+          refreshKey={refreshKey}
         />
 
           {/* Ambulance markers */}
@@ -435,6 +534,77 @@ export default function MapView({ ambulances, hospitals, incidents }) {
           </Marker>
         ))}
       </MapContainer>
+
+      {/* Map Action Buttons */}
+      <div className="map-actions" style={{
+        position: 'absolute',
+        top: 20,
+        right: 20,
+        zIndex: 1000,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 10
+      }}>
+        <button 
+          onClick={handleRefresh}
+          className="map-action-btn"
+          title="Refresh Routes & Data"
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 8,
+            background: 'var(--bg-secondary)',
+            color: 'var(--text-default)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: 'var(--shadow-lg)',
+            transition: 'all 0.2s',
+            border: '1px solid var(--border-default)'
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.background = 'var(--bg-tertiary)';
+            e.currentTarget.style.color = 'var(--accent-blue)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.background = 'var(--bg-secondary)';
+            e.currentTarget.style.color = 'var(--text-default)';
+          }}
+        >
+          <RefreshCcw size={20} className={refreshKey > 0 ? 'spinning-once' : ''} />
+        </button>
+
+        <button 
+          onClick={resetAmbulancePositions}
+          className="map-action-btn"
+          title="Reset Driver Positions"
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: 8,
+            background: 'var(--bg-secondary)',
+            color: 'var(--text-default)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            boxShadow: 'var(--shadow-lg)',
+            transition: 'all 0.2s',
+            border: '1px solid var(--border-default)'
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.background = 'var(--bg-tertiary)';
+            e.currentTarget.style.color = 'var(--accent-orange)';
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.background = 'var(--bg-secondary)';
+            e.currentTarget.style.color = 'var(--text-default)';
+          }}
+        >
+          <RotateCcw size={20} />
+        </button>
+      </div>
 
       {/* Map legend */}
       <div className="map-legend">

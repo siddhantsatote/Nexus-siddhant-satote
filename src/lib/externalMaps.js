@@ -53,42 +53,71 @@ export async function fetchNearbyHospitals(lat, lng, radiusInMeters = 5000) {
   }
 }
 
+const routeCache = new Map();
+
+/**
+ * Generate a smooth stable curve between two points as fallback
+ */
+function generateStableRoute(start, end) {
+  const [startLat, startLng] = start;
+  const [endLat, endLng] = end;
+  
+  const dist = Math.hypot(endLat - startLat, endLng - startLng);
+  const numWaypoints = Math.max(2, Math.ceil(dist / 0.005));
+  
+  const points = [];
+  for (let i = 0; i <= numWaypoints; i++) {
+    const t = i / numWaypoints;
+    // Add a very subtle arc to the path so it doesn't look like a direct clip through buildings
+    const offset = Math.sin(t * Math.PI) * dist * 0.1;
+    const lat = startLat + (endLat - startLat) * t + offset;
+    const lng = startLng + (endLng - startLng) * t - offset;
+    points.push([lat, lng]);
+  }
+  return points;
+}
+
 /**
  * Fetch a driving route between two points using OSRM with fallbacks
  * @param {[number, number]} start [lat, lng]
  * @param {[number, number]} end [lat, lng]
- * @returns {Promise<Object>} Route data with geometry and duration
+ * @returns {Promise<Object|null>} Route data with geometry and duration, or null if failed
  */
 export async function fetchRoute(start, end) {
-  // Try each endpoint in order
+  if (!start || !end) return null;
+  
+  const cacheKey = `${start[0].toFixed(5)},${start[1].toFixed(5)}-${end[0].toFixed(5)},${end[1].toFixed(5)}`;
+  if (routeCache.has(cacheKey)) return routeCache.get(cacheKey);
+
   for (const baseUrl of OSRM_ENDPOINTS) {
-    const url = `${baseUrl}${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson&steps=true`;
-    
     try {
-      const response = await fetch(url);
-      if (!response.ok) continue; // Try next endpoint
+      const url = `${baseUrl}${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
+      const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
       
-      const data = await response.json();
-      
-      if (data.code === 'Ok' && data.routes && data.routes.length > 0) {
-        const route = data.routes[0];
-        return {
-          geometry: route.geometry.coordinates.map(coord => [coord[1], coord[0]]), // Convert [lng, lat] to [lat, lng]
-          distance: route.distance, // meters
-          duration: route.duration // seconds
-        };
+      if (response.ok) {
+        const data = await response.json();
+        if (data.code === 'Ok' && data.routes?.length > 0) {
+          const route = data.routes[0];
+          const result = {
+            geometry: route.geometry.coordinates.map(c => [c[1], c[0]]),
+            distance: route.distance,
+            duration: route.duration
+          };
+          routeCache.set(cacheKey, result);
+          return result;
+        }
       }
-    } catch (error) {
-      console.warn(`OSRM endpoint ${baseUrl} failed:`, error.message);
-      continue;
+    } catch (e) {
+      console.warn(`OSRM Error (${baseUrl}):`, e.message);
     }
   }
 
-  // Final fallback to straight line if all endpoints fail
-  console.error('All OSRM routing endpoints failed. Falling back to straight line.');
+  // Fallback: stable curve
+  const geometry = generateStableRoute(start, end);
+  const distance = Math.hypot(end[0] - start[0], end[1] - start[1]) * 111319;
   return {
-    geometry: [start, end],
-    distance: Math.hypot(start[0] - end[0], start[1] - end[1]) * 111000,
-    duration: 600
+    geometry,
+    distance,
+    duration: distance / 13 // ~45km/h
   };
 }

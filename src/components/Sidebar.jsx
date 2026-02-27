@@ -5,11 +5,11 @@ import {
   Building2,
   Zap,
   Radio,
-  Info,
   Home,
   ShieldCheck,
   User,
 } from "lucide-react";
+import { motion } from "framer-motion";
 
 const USER_ITEMS = [{ id: "booking", label: "Book Ambulance", icon: Radio }];
 
@@ -34,7 +34,6 @@ export default function Sidebar({
   activeView,
   setActiveView,
   incidents,
-  usingDemo,
   isAdmin,
   onAdminLogout,
 }) {
@@ -50,51 +49,47 @@ export default function Sidebar({
   } else if (role === "admin") {
     navItems = isAdmin ? ADMIN_ITEMS : [ADMIN_LOGIN_ITEM];
   } else {
-    // entry / neutral
     navItems = [{ id: "landing", label: "Home", icon: Home }];
   }
 
   return (
     <aside className="sidebar">
       <div className="sidebar-brand">
-        <h1>🚑 PRAANA</h1>
+        <h1>🚑 <span>PRAANA</span></h1>
         <p>Emergency Response AI</p>
       </div>
 
       <nav className="sidebar-nav">
-        {navItems.map((item) => {
+        {navItems.map((item, idx) => {
           const Icon = item.icon;
           return (
-            <div
+            <motion.div
               key={item.id}
               className={`nav-item ${activeView === item.id ? "active" : ""}`}
               onClick={() => setActiveView(item.id)}
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: idx * 0.05, duration: 0.25, ease: "easeOut" }}
+              whileHover={{ x: 3 }}
             >
               <Icon className="icon" size={18} />
               <span>{item.label}</span>
               {item.id === "incidents" && openP1 > 0 && (
                 <span className="nav-badge">{openP1}</span>
               )}
-              {item.id === "surge" && (
-                <Zap
-                  size={12}
-                  style={{ marginLeft: "auto", color: "#f59e0b", opacity: 0.6 }}
-                />
-              )}
-            </div>
+            </motion.div>
           );
         })}
       </nav>
 
-      <div className="sidebar-footer">
-        {role === "admin" && isAdmin && (
+      {role === "admin" && isAdmin && (
+        <div className="sidebar-footer">
           <div
             style={{
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              marginBottom: 10,
-              fontSize: "0.75rem",
+              fontSize: "0.78rem",
               color: "var(--text-secondary)",
             }}
           >
@@ -108,7 +103,7 @@ export default function Sidebar({
                   border: "none",
                   color: "var(--accent-blue)",
                   cursor: "pointer",
-                  fontSize: "0.75rem",
+                  fontSize: "0.78rem",
                   fontWeight: 600,
                   padding: 0,
                 }}
@@ -117,27 +112,8 @@ export default function Sidebar({
               </button>
             )}
           </div>
-        )}
-        {usingDemo && (
-          <div className="demo-badge">
-            <Info size={14} />
-            <span>Demo Mode — No Supabase</span>
-          </div>
-        )}
-        <div
-          style={{
-            marginTop: 12,
-            fontSize: "0.7rem",
-            color: "var(--text-muted)",
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-        >
-          <Radio size={12} />
-          <span>108 — GVK EMRI Connected</span>
         </div>
-      </div>
+      )}
     </aside>
   );
 }

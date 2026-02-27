@@ -35,18 +35,64 @@ async function seed() {
 
   console.log('Inserting new Pune-focused data...');
 
-  // Pune Ambulances
+  // Pune & Pimpri Chinchwad Ambulances
   const ambulances = [
-    { unit_code: 'PUN-A1', type: 'ALS', status: 'available', location_lat: 18.5204, location_lng: 73.8567, driver_name: 'Rajesh Kumar', driver_phone: '+91-9876543210', zone: 'Pune-Central' },
-    { unit_code: 'PUN-A2', type: 'BLS', status: 'available', location_lat: 18.5074, location_lng: 73.8077, driver_name: 'Amit Patil', driver_phone: '+91-9876543211', zone: 'Pune-West' },
-    { unit_code: 'PUN-A3', type: 'ALS', status: 'available', location_lat: 18.5679, location_lng: 73.9143, driver_name: 'Suresh Nair', driver_phone: '+91-9876543212', zone: 'Pune-East' },
-    { unit_code: 'PUN-A4', type: 'BLS', status: 'available', location_lat: 18.5089, location_lng: 73.9259, driver_name: 'Deepak Sharma', driver_phone: '+91-9876543213', zone: 'Pune-South' },
-    { unit_code: 'PUN-A5', type: 'ALS', status: 'available', location_lat: 18.5515, location_lng: 73.8225, driver_name: 'Vikram Singh', driver_phone: '+91-9876543214', zone: 'Pune-North' },
-    { unit_code: 'PUN-A6', type: 'BLS', status: 'available', location_lat: 18.5900, location_lng: 73.7400, driver_name: 'Ravi Verma', driver_phone: '+91-9876543215', zone: 'Pune-Hinjewadi' },
-    { unit_code: 'PUN-A7', type: 'ALS', status: 'available', location_lat: 18.5250, location_lng: 73.8750, driver_name: 'Manoj Tiwari', driver_phone: '+91-9876543216', zone: 'Pune-Camp' },
-    { unit_code: 'PUN-A8', type: 'ALS', status: 'available', location_lat: 18.4500, location_lng: 73.8800, driver_name: 'Karthik Reddy', driver_phone: '+91-9876543217', zone: 'Pune-Katraj' },
-    { unit_code: 'PUN-A9', type: 'BLS', status: 'available', location_lat: 18.5500, location_lng: 73.9300, driver_name: 'Sunil Ghadge', driver_phone: '+91-9876543218', zone: 'Pune-Kharadi' },
-    { unit_code: 'PUN-A10', type: 'ALS', status: 'available', location_lat: 18.5200, location_lng: 73.8400, driver_name: 'Prakash Deshmukh', driver_phone: '+91-9876543219', zone: 'Pune-Shivajinagar' }
+    // Shaniwar Wada & Central Pune
+    { unit_code: 'PUN-A1', type: 'ALS', status: 'available', location_lat: 18.5204, location_lng: 73.8567, driver_name: 'Rajesh Kumar', driver_phone: '+91-9876543210', zone: 'Shaniwar Wada' },
+    { unit_code: 'PUN-A2', type: 'BLS', status: 'available', location_lat: 18.5074, location_lng: 73.8077, driver_name: 'Amit Patil', driver_phone: '+91-9876543211', zone: 'Karve Road' },
+    { unit_code: 'PUN-A11', type: 'ALS', status: 'available', location_lat: 18.5150, location_lng: 73.8150, driver_name: 'Harish Desai', driver_phone: '+91-9876543320', zone: 'Camp' },
+    { unit_code: 'PUN-A12', type: 'BLS', status: 'available', location_lat: 18.5100, location_lng: 73.8050, driver_name: 'Nilesh Joshi', driver_phone: '+91-9876543321', zone: 'Sadashiv Peth' },
+    
+    // Viman Nagar & East Pune
+    { unit_code: 'PUN-A3', type: 'ALS', status: 'available', location_lat: 18.5679, location_lng: 73.9143, driver_name: 'Suresh Nair', driver_phone: '+91-9876543212', zone: 'Viman Nagar' },
+    { unit_code: 'PUN-A13', type: 'ALS', status: 'available', location_lat: 18.5600, location_lng: 73.9200, driver_name: 'Priya Tanvi', driver_phone: '+91-9876543322', zone: 'Kharadi' },
+    { unit_code: 'PUN-A22', type: 'BLS', status: 'available', location_lat: 18.5650, location_lng: 73.9250, driver_name: 'Kavya Singh', driver_phone: '+91-9876543338', zone: 'Magarpatta' },
+    
+    // South Pune - Hadapsar & Yerawada
+    { unit_code: 'PUN-A4', type: 'BLS', status: 'available', location_lat: 18.5089, location_lng: 73.9259, driver_name: 'Deepak Sharma', driver_phone: '+91-9876543213', zone: 'Hadapsar' },
+    { unit_code: 'PUN-A23', type: 'ALS', status: 'available', location_lat: 18.4900, location_lng: 73.9100, driver_name: 'Arjun Reddy', driver_phone: '+91-9876543339', zone: 'Yerawada' },
+    { unit_code: 'PUN-A24', type: 'BLS', status: 'available', location_lat: 18.4800, location_lng: 73.8950, driver_name: 'Sneha Gupta', driver_phone: '+91-9876543340', zone: 'Mundhwa' },
+    
+    // North Pune - Aundh & Baner
+    { unit_code: 'PUN-A5', type: 'ALS', status: 'available', location_lat: 18.5515, location_lng: 73.8225, driver_name: 'Vikram Singh', driver_phone: '+91-9876543214', zone: 'Aundh' },
+    { unit_code: 'PUN-A25', type: 'BLS', status: 'available', location_lat: 18.5600, location_lng: 73.8050, driver_name: 'Pooja Menon', driver_phone: '+91-9876543341', zone: 'Baner' },
+    { unit_code: 'PUN-A26', type: 'ALS', status: 'available', location_lat: 18.5550, location_lng: 73.7900, driver_name: 'Varun Patel', driver_phone: '+91-9876543342', zone: 'Pashan' },
+    
+    // Hinjewadi & Wakad (IT Hub)
+    { unit_code: 'PUN-A6', type: 'BLS', status: 'available', location_lat: 18.5900, location_lng: 73.7400, driver_name: 'Ravi Verma', driver_phone: '+91-9876543215', zone: 'Hinjewadi' },
+    { unit_code: 'PUN-A19', type: 'ALS', status: 'available', location_lat: 18.5750, location_lng: 73.7450, driver_name: 'Anand Bhagat', driver_phone: '+91-9876543335', zone: 'Wakad' },
+    { unit_code: 'PUN-A20', type: 'BLS', status: 'available', location_lat: 18.5700, location_lng: 73.7500, driver_name: 'Gaurav Jadhav', driver_phone: '+91-9876543336', zone: 'Wakad Tech Park' },
+    { unit_code: 'PUN-A21', type: 'ALS', status: 'available', location_lat: 18.5800, location_lng: 73.7380, driver_name: 'Chandrika Iyer', driver_phone: '+91-9876543337', zone: 'Hinjewadi Phase 2' },
+    
+    // Katraj & Bavdhan (South West)
+    { unit_code: 'PUN-A7', type: 'ALS', status: 'available', location_lat: 18.5250, location_lng: 73.8750, driver_name: 'Manoj Tiwari', driver_phone: '+91-9876543216', zone: 'Deccan' },
+    { unit_code: 'PUN-A8', type: 'ALS', status: 'available', location_lat: 18.4500, location_lng: 73.8800, driver_name: 'Karthik Reddy', driver_phone: '+91-9876543217', zone: 'Katraj' },
+    { unit_code: 'PUN-A27', type: 'BLS', status: 'available', location_lat: 18.4600, location_lng: 73.8600, driver_name: 'Maya Sharma', driver_phone: '+91-9876543343', zone: 'Bavdhan' },
+    
+    // Koregaon Park & Kalyani Nagar
+    { unit_code: 'PUN-A10', type: 'ALS', status: 'available', location_lat: 18.5200, location_lng: 73.8400, driver_name: 'Prakash Deshmukh', driver_phone: '+91-9876543219', zone: 'Koregaon Park' },
+    { unit_code: 'PUN-A28', type: 'BLS', status: 'available', location_lat: 18.5300, location_lng: 73.8600, driver_name: 'Riya Iyer', driver_phone: '+91-9876543344', zone: 'Kalyani Nagar' },
+    
+    // Shivajinagar & Nagar Road
+    { unit_code: 'PUN-A9', type: 'BLS', status: 'available', location_lat: 18.5500, location_lng: 73.9300, driver_name: 'Sunil Ghadge', driver_phone: '+91-9876543218', zone: 'Shivajinagar' },
+    { unit_code: 'PUN-A29', type: 'ALS', status: 'available', location_lat: 18.5400, location_lng: 73.8200, driver_name: 'Arjun Singh', driver_phone: '+91-9876543345', zone: 'Nagar Road' },
+    
+    // Railway Station & Cantonment
+    { unit_code: 'PUN-A30', type: 'ALS', status: 'available', location_lat: 18.5289, location_lng: 73.8744, driver_name: 'Rohit Kumar', driver_phone: '+91-9876543346', zone: 'Railway Station' },
+    { unit_code: 'PUN-A31', type: 'BLS', status: 'available', location_lat: 18.5350, location_lng: 73.8650, driver_name: 'Simran Kaur', driver_phone: '+91-9876543347', zone: 'Cantonment' },
+
+    // Pimpri Zone
+    { unit_code: 'PIM-A1', type: 'ALS', status: 'available', location_lat: 18.6298, location_lng: 73.7997, driver_name: 'Ashok Gavhane', driver_phone: '+91-9876543328', zone: 'Pimpri' },
+    { unit_code: 'PIM-A2', type: 'BLS', status: 'available', location_lat: 18.6250, location_lng: 73.7900, driver_name: 'Vishnu Nair', driver_phone: '+91-9876543329', zone: 'Pimpri Industrial' },
+    { unit_code: 'PIM-A3', type: 'ALS', status: 'available', location_lat: 18.6350, location_lng: 73.8100, driver_name: 'Rajendra Singh', driver_phone: '+91-9876543330', zone: 'Akurdi' },
+    { unit_code: 'PIM-A4', type: 'BLS', status: 'available', location_lat: 18.6300, location_lng: 73.7850, driver_name: 'Isha Mehta', driver_phone: '+91-9876543348', zone: 'Ravet' },
+
+    // Chinchwad Zone
+    { unit_code: 'CHI-A1', type: 'ALS', status: 'available', location_lat: 18.6400, location_lng: 73.8200, driver_name: 'Sandeep Sharma', driver_phone: '+91-9876543331', zone: 'Chinchwad' },
+    { unit_code: 'CHI-A2', type: 'BLS', status: 'available', location_lat: 18.6350, location_lng: 73.8150, driver_name: 'Akshay Joshi', driver_phone: '+91-9876543332', zone: 'Talegaon' },
+    { unit_code: 'CHI-A3', type: 'ALS', status: 'available', location_lat: 18.6450, location_lng: 73.8300, driver_name: 'Pranav Rao', driver_phone: '+91-9876543333', zone: 'Dapodi' },
+    { unit_code: 'CHI-A4', type: 'BLS', status: 'available', location_lat: 18.6300, location_lng: 73.8100, driver_name: 'Neha Kapoor', driver_phone: '+91-9876543334', zone: 'Nigdi' },
+    { unit_code: 'CHI-A5', type: 'ALS', status: 'available', location_lat: 18.6500, location_lng: 73.8250, driver_name: 'Ankur Malhotra', driver_phone: '+91-9876543349', zone: 'Kasarwadi' }
   ];
 
   const { data: ambData, error: ambError } = await supabase.from('ambulances').insert(ambulances).select();
