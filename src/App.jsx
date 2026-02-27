@@ -9,6 +9,7 @@ import IncidentPanel from './components/IncidentPanel';
 import FleetPanel from './components/FleetPanel';
 import HospitalPanel from './components/HospitalPanel';
 import SurgePanel from './components/SurgePanel';
+import CallLogsPanel from './components/CallLogsPanel';
 
 function StatsRow({ incidents, ambulances, hospitals }) {
   const p1 = incidents.filter(i => i.priority === 'P1' && i.status !== 'resolved').length;
@@ -54,8 +55,8 @@ export default function App() {
   const [activeView, setActiveView] = useState('dashboard');
   const [showEmergencyModal, setShowEmergencyModal] = useState(false);
   const {
-    ambulances, hospitals, incidents, loading, usingDemo,
-    addIncident, updateAmbulanceStatus, updateIncidentStatus
+    ambulances, hospitals, incidents, callLogs, loading, usingDemo,
+    addIncident, updateAmbulanceStatus, updateIncidentStatus, setAllAmbulancesAvailable
   } = useRealtimeData();
 
   if (loading) {
@@ -133,7 +134,15 @@ export default function App() {
           )}
 
           {activeView === 'fleet' && (
-            <FleetPanel ambulances={ambulances} updateAmbulanceStatus={updateAmbulanceStatus} />
+            <FleetPanel ambulances={ambulances} updateAmbulanceStatus={updateAmbulanceStatus} setAllAmbulancesAvailable={setAllAmbulancesAvailable} />
+          )}
+
+          {activeView === 'calls' && (
+            <CallLogsPanel 
+              callLogs={callLogs} 
+              incidents={incidents}
+              onCreateIncident={addIncident}
+            />
           )}
 
           {activeView === 'hospitals' && (

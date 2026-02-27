@@ -1,10 +1,11 @@
 import { 
-  LayoutDashboard, AlertTriangle, Truck, Building2, Zap, Radio, Info
+  LayoutDashboard, AlertTriangle, Truck, Building2, Zap, Radio, Info, PhoneIncoming
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'incidents', label: 'Incidents', icon: AlertTriangle },
+  { id: 'calls', label: 'AI Calls', icon: PhoneIncoming },
   { id: 'fleet', label: 'Fleet Status', icon: Truck },
   { id: 'hospitals', label: 'Hospitals', icon: Building2 },
   { id: 'surge', label: 'Surge Mode', icon: Zap },

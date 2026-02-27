@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { User, Phone, MapPin, Radio } from 'lucide-react';
 
-export default function FleetPanel({ ambulances, updateAmbulanceStatus }) {
+export default function FleetPanel({ ambulances, updateAmbulanceStatus, setAllAmbulancesAvailable }) {
   const [filter, setFilter] = useState('all');
 
   const filtered = filter === 'all'
@@ -20,9 +20,18 @@ export default function FleetPanel({ ambulances, updateAmbulanceStatus }) {
     <div>
       <div className="section-header">
         <h2 className="section-title">🚑 Fleet Management</h2>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-          {counts.available} of {counts.all} units available
-        </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+            {counts.available} of {counts.all} units available
+          </span>
+          <button 
+            className="btn btn-sm btn-primary" 
+            onClick={setAllAmbulancesAvailable}
+            style={{ fontSize: '0.7rem' }}
+          >
+            Set All Available
+          </button>
+        </div>
       </div>
 
       <div className="filter-bar">

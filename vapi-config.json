@@ -1,0 +1,64 @@
+{
+  "name": "PRAANA Emergency Responder",
+  "description": "AI assistant for emergency medical calls - Pune region",
+  
+  "model": {
+    "provider": "groq",
+    "model": "llama-3.1-8b-instant",
+    "temperature": 0.3,
+    "systemPrompt": "You are PRAANA, an emergency medical response AI for Pune, India. You answer emergency calls and gather critical information quickly and calmly.\n\nYour goals:\n1. Stay CALM and reassuring\n2. Gather essential information FAST\n3. Provide basic first-aid guidance while help is dispatched\n\nRequired information to collect:\n- Nature of emergency (accident, cardiac, breathing, burns, etc.)\n- Exact location (landmark, area in Pune)\n- Number of patients\n- Patient condition (conscious? breathing? bleeding?)\n- Caller's name and callback number\n\nPune landmarks you know: Hinjewadi, Kothrud, Viman Nagar, Shaniwar Wada, Camp, Magarpatta, Baner, Aundh, Swargate, Hadapsar, Wakad, Pimpri, Chinchwad.\n\nAfter gathering info, reassure the caller that help is being dispatched immediately.\n\nSpeak in simple English or Hindi based on caller preference. Be direct but compassionate."
+  },
+
+  "voice": {
+    "provider": "11labs",
+    "voiceId": "21m00Tcm4TlvDq8ikWAM",
+    "stability": 0.6,
+    "similarityBoost": 0.8
+  },
+
+  "firstMessage": "PRAANA Emergency. What is your emergency? Please tell me what happened.",
+
+  "transcriber": {
+    "provider": "deepgram",
+    "model": "nova-2",
+    "language": "en"
+  },
+
+  "endCallMessage": "Help is on the way. Stay calm and stay on the line if you need further assistance. PRAANA Emergency signing off.",
+
+  "endCallPhrases": [
+    "thank you bye",
+    "okay bye", 
+    "help is coming",
+    "ambulance dispatched"
+  ],
+
+  "analysisPlan": {
+    "summaryPrompt": "Summarize this emergency call in 2-3 sentences, focusing on: what happened, where, patient condition.",
+    "structuredDataPrompt": "Extract the following from the call transcript and return as JSON:\n- priority: 'P1' (life-threatening: cardiac arrest, not breathing, unconscious, severe trauma), 'P2' (urgent: fractures, bleeding, chest pain), or 'P3' (stable: minor injuries)\n- incident_type: one of 'cardiac', 'accident', 'trauma', 'burns', 'respiratory', 'neurological', 'other'\n- location: the address or landmark mentioned\n- patient_count: number of patients (default 1)\n- patient_condition: brief description of patient state\n- caller_name: name if provided\n- callback_number: phone number if provided",
+    "structuredDataSchema": {
+      "type": "object",
+      "properties": {
+        "priority": { "type": "string", "enum": ["P1", "P2", "P3"] },
+        "incident_type": { "type": "string" },
+        "location": { "type": "string" },
+        "patient_count": { "type": "integer" },
+        "patient_condition": { "type": "string" },
+        "caller_name": { "type": "string" },
+        "callback_number": { "type": "string" }
+      }
+    }
+  },
+
+  "serverUrl": "YOUR_SUPABASE_FUNCTION_URL/vapi-webhook",
+  "serverUrlSecret": "your-webhook-secret",
+
+  "_setup_instructions": {
+    "step1": "Go to https://vapi.ai and sign up for free",
+    "step2": "Create a new Assistant and paste this configuration",
+    "step3": "Get a phone number (Vapi provides test numbers)",
+    "step4": "Deploy the Supabase Edge Function: supabase functions deploy vapi-webhook",
+    "step5": "Update serverUrl with your Supabase function URL",
+    "step6": "Test by calling the Vapi number!"
+  }
+}
