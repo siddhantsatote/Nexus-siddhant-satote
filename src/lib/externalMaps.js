@@ -24,6 +24,17 @@ export async function fetchNearbyHospitals(lat, lng, radiusInMeters = 5000) {
   
   try {
     const response = await fetch(`${OVERPASS_URL}?data=${encodeURIComponent(query)}`);
+    if (!response.ok) {
+      const text = await response.text();
+      console.warn('Overpass API returned non-OK status:', response.status, text.slice(0, 100));
+      return [];
+    }
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const text = await response.text();
+      console.warn('Overpass API returned non-JSON content:', contentType, text.slice(0, 100));
+      return [];
+    }
     const data = await response.json();
     return data.elements.map(el => ({
       id: el.id,
@@ -45,13 +56,16 @@ export async function fetchNearbyHospitals(lat, lng, radiusInMeters = 5000) {
  * @returns {Promise<Object>} Route data with geometry and duration
  */
 export async function fetchRoute(start, end) {
-  const url = `${OSRM_URL}${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
+  // Use OSRM with full overview and annotations for better road following
+  const url = `${OSRM_URL}${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson&steps=true`;
   
   try {
     const response = await fetch(url);
+    if (!response.ok) throw new Error('OSRM network response was not ok');
+    
     const data = await response.json();
     
-    if (data.code !== 'Ok') {
+    if (data.code !== 'Ok' || !data.routes || data.routes.length === 0) {
       throw new Error(`OSRM error: ${data.code}`);
     }
     
@@ -63,6 +77,11 @@ export async function fetchRoute(start, end) {
     };
   } catch (error) {
     console.error('Failed to fetch route from OSRM:', error);
-    return null;
+    // Fallback to straight line if OSRM fails, so we at least see something
+    return {
+      geometry: [start, end],
+      distance: Math.hypot(start[0] - end[0], start[1] - end[1]) * 111000,
+      duration: 600
+    };
   }
 }

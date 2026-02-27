@@ -522,10 +522,41 @@ body {
 }
 
 /* ─── Panels ─────────────────────────────────────────────── */
-.panel-grid {
-  display: grid;
-  gap: 20px;
-}
+  .panel-grid {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: var(--panel-gap);
+    height: calc(100vh - 140px);
+    overflow: hidden;
+  }
+
+  .main-layout {
+    grid-template-columns: 1.2fr 380px;
+  }
+
+  /* Animated Map Routes */
+  .amb-route {
+    stroke-dasharray: 10, 10;
+    animation: flow-amb 20s linear infinite;
+    filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.4));
+  }
+
+  .hosp-route {
+    stroke-dasharray: 8, 8;
+    animation: flow-hosp 25s linear infinite;
+    filter: drop-shadow(0 0 3px rgba(139, 92, 246, 0.3));
+  }
+
+  @keyframes flow-amb {
+    from { stroke-dashoffset: 200; }
+    to { stroke-dashoffset: 0; }
+  }
+
+  @keyframes flow-hosp {
+    from { stroke-dashoffset: 160; }
+    to { stroke-dashoffset: 0; }
+  }
+
 
 .panel-grid.two-col {
   grid-template-columns: 1fr 1fr;

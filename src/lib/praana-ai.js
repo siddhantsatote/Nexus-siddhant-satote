@@ -91,6 +91,10 @@ When multiple incidents occur simultaneously:
 
 const PUNE_GEO_MAP = {
   'hinjewadi': { lat: 18.5913, lng: 73.7389 },
+  'hinjawadi': { lat: 18.5913, lng: 73.7389 },
+  'hinjewadi phase 1': { lat: 18.5913, lng: 73.7389 },
+  'hinjewadi phase 2': { lat: 18.5911, lng: 73.7197 },
+  'hinjewadi phase 3': { lat: 18.5836, lng: 73.6974 },
   'kothrud': { lat: 18.5074, lng: 73.8077 },
   'viman nagar': { lat: 18.5679, lng: 73.9143 },
   'shaniwar wada': { lat: 18.5195, lng: 73.8553 },

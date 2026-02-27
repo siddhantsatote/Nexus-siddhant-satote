@@ -224,23 +224,31 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
                 return null;
             })()}
 
-            <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
+            <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
               {latestIncidentId ? (
                 <button 
                   className="btn btn-sm btn-primary" 
+                  style={{ 
+                    background: 'var(--accent-orange)', 
+                    borderColor: 'var(--accent-orange)',
+                    fontWeight: 700,
+                    padding: '8px 16px',
+                    boxShadow: '0 0 15px rgba(245, 158, 11, 0.4)'
+                  }}
                   onClick={() => {
                     const incident = incidents.find(i => i.id === latestIncidentId);
                     if (incident) handleDispatchNearest(incident);
                   }}
                 >
-                  🚀 Dispatch Nearest Unit
+                  🚀 Dispatch Nearest Unit Now
                 </button>
               ) : (
-                <button className="btn btn-sm btn-primary" onClick={() => { setTriageResult(null); setDescription(''); }}>
+                <button className="btn btn-sm" onClick={() => { setTriageResult(null); setDescription(''); }}>
                   ✓ Accept & Clear
                 </button>
               )}
             </div>
+
 
         </div>
       )}

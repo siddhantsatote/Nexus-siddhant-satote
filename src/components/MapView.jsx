@@ -169,10 +169,10 @@ function HospitalRouteLayer({ incidents, externalHospitals, hospitals }) {
           positions={route.points}
           pathOptions={{
             color: '#8b5cf6', // Purple for hospital route
-            weight: 3,
-            opacity: 0.8,
+            weight: 4,
+            opacity: 0.9,
             lineJoin: 'round',
-            dashArray: '5, 5',
+            lineCap: 'round',
             className: 'hosp-route'
           }}
         >
@@ -187,76 +187,53 @@ function HospitalRouteLayer({ incidents, externalHospitals, hospitals }) {
   );
 }
 
-function NavigationLayer({ ambulances, incidents, hospitals }) {
-  const [paths, setPaths] = useState([]);
-  const { calculateETA, graph } = useNavigation(ambulances, incidents, hospitals);
+function AmbulanceRouteLayer({ ambulances, incidents }) {
+  const [ambRoutes, setAmbRoutes] = useState([]);
 
   useEffect(() => {
-    if (!graph) return;
+    const fetchAllRoutes = async () => {
+      const activeIncidents = incidents.filter(i => i.status === 'dispatched' && i.assigned_ambulance && i.location_lat);
+      const newRoutes = [];
 
-    const newPaths = [];
-    incidents.forEach(inc => {
-      if (inc.status === 'dispatched' && inc.assigned_ambulance) {
+      for (const inc of activeIncidents) {
         const amb = ambulances.find(a => a.id === inc.assigned_ambulance);
         if (amb && amb.location_lat && amb.location_lng && inc.location_lat && inc.location_lng) {
-          const result = calculateETA(
-            amb.location_lat, amb.location_lng,
-            inc.location_lat, inc.location_lng
-          );
-          if (result && result.path.length > 1) {
-            newPaths.push({
-              id: `path-${inc.id}`,
-              points: result.path.map(n => [n.lat, n.lng]),
-              color: '#f59e0b',
-              eta: result.eta
+          const route = await fetchRoute([amb.location_lat, amb.location_lng], [inc.location_lat, inc.location_lng]);
+          if (route) {
+            newRoutes.push({
+              id: `amb-route-${inc.id}`,
+              points: route.geometry,
+              eta: Math.round(route.duration / 60)
             });
           }
         }
       }
-    });
+      setAmbRoutes(newRoutes);
+    };
 
-    setPaths(newPaths);
-  }, [graph, ambulances, incidents, calculateETA]);
-
-  if (!graph) return null;
+    if (incidents.length > 0) {
+      fetchAllRoutes();
+    }
+  }, [incidents, ambulances]);
 
   return (
     <>
-      {/* Heavy Traffic visual markers (simplified) */}
-      {incidents
-        .filter(i => i.priority === 'P1' && i.location_lat)
-        .map((h, i) => (
-          <Circle
-            key={`traffic-${i}`}
-            center={[h.location_lat, h.location_lng]}
-            radius={3000}
-            pathOptions={{
-              color: '#ef4444',
-              fillColor: '#ef4444',
-              fillOpacity: 0.1,
-              weight: 1,
-              dashArray: '5, 10'
-            }}
-          />
-        ))}
-
-      {/* Navigation paths */}
-      {paths.map(path => (
+      {ambRoutes.map(route => (
         <Polyline
-          key={path.id}
-          positions={path.points}
+          key={route.id}
+          positions={route.points}
           pathOptions={{
-            color: path.color,
-            weight: 4,
-            opacity: 0.6,
+            color: '#f59e0b', // Orange for ambulance route
+            weight: 5,
+            opacity: 0.8,
             lineJoin: 'round',
-            dashArray: '1, 8',
+            lineCap: 'round',
             className: 'amb-route'
           }}
         >
           <Tooltip sticky direction="top" opacity={0.9}>
             <div style={{ padding: '2px 6px', fontSize: '0.7rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 4 }}>
-              <span style={{ fontSize: '10px' }}>⚡</span> ETA: {path.eta}m
+              <span style={{ fontSize: '10px' }}>⚡</span> ETA: {route.eta}m
             </div>
           </Tooltip>
         </Polyline>
@@ -308,10 +285,9 @@ export default function MapView({ ambulances, hospitals, incidents }) {
           incidents={incidents} 
         />
         
-        <NavigationLayer 
+        <AmbulanceRouteLayer 
           ambulances={ambulances} 
           incidents={incidents} 
-          hospitals={hospitals} 
         />
 
         <HospitalRouteLayer 
