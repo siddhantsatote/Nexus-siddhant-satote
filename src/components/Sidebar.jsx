@@ -8,6 +8,7 @@ import {
   Home,
   ShieldCheck,
   User,
+  BarChart3,
 } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -18,6 +19,7 @@ const ADMIN_ITEMS = [
   { id: "incidents", label: "Incidents", icon: AlertTriangle },
   { id: "fleet", label: "Fleet Status", icon: Truck },
   { id: "hospitals", label: "Hospitals", icon: Building2 },
+  { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "surge", label: "Surge Mode", icon: Zap },
 ];
 
@@ -35,11 +37,13 @@ export default function Sidebar({
   setActiveView,
   incidents,
   isAdmin,
+  notifications = [],
   onAdminLogout,
 }) {
   const openP1 = incidents.filter(
     (i) => i.priority === "P1" && i.status === "open",
   ).length;
+  const notifCount = notifications.length;
 
   let navItems = [];
   if (role === "user") {
@@ -76,6 +80,9 @@ export default function Sidebar({
               <span>{item.label}</span>
               {item.id === "incidents" && openP1 > 0 && (
                 <span className="nav-badge">{openP1}</span>
+              )}
+              {item.id === "hospitals" && notifCount > 0 && (
+                <span className="prenotif-count-badge">{notifCount}</span>
               )}
             </motion.div>
           );

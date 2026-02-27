@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import "./index.css";
 import { useRealtimeData } from "./hooks/useRealtimeData";
+import { useNotifications } from "./hooks/useNotifications";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import MapView from "./components/MapView";
@@ -18,6 +19,7 @@ import HospitalPanel from "./components/HospitalPanel";
 import SurgePanel from "./components/SurgePanel";
 import BookingPortal from "./components/BookingPortal";
 import DriverConsole from "./components/DriverConsole";
+import AnalyticsPanel from "./components/AnalyticsPanel";
 
 function StatsRow({ incidents, ambulances, hospitals }) {
   const p1 = incidents.filter(
@@ -246,6 +248,12 @@ export default function App() {
     resetAmbulancePositions,
     deleteAmbulance,
   } = useRealtimeData();
+  const {
+    notifications,
+    addNotification,
+    dismissNotification,
+    clearForIncident,
+  } = useNotifications();
 
   if (loading) {
     return (
@@ -287,7 +295,8 @@ export default function App() {
       nextView === "incidents" ||
       nextView === "fleet" ||
       nextView === "hospitals" ||
-      nextView === "surge"
+      nextView === "surge" ||
+      nextView === "analytics"
     );
   }
 
@@ -326,6 +335,7 @@ export default function App() {
           setActiveView={handleSetView}
           incidents={incidents}
           isAdmin={isAdmin}
+          notifications={notifications}
           onAdminLogout={() => {
             setIsAdmin(false);
             setRole("entry");
@@ -383,6 +393,8 @@ export default function App() {
                   updateIncidentStatus={updateIncidentStatus}
                   updateAmbulanceStatus={updateAmbulanceStatus}
                   updateAmbulanceLocation={updateAmbulanceLocation}
+                  addNotification={addNotification}
+                  clearForIncident={clearForIncident}
                 />
               </div>
             </>
@@ -405,6 +417,8 @@ export default function App() {
                     updateIncidentStatus={updateIncidentStatus}
                     updateAmbulanceStatus={updateAmbulanceStatus}
                     updateAmbulanceLocation={updateAmbulanceLocation}
+                    addNotification={addNotification}
+                    clearForIncident={clearForIncident}
                   />
                 </div>
                 <MapView
@@ -427,11 +441,23 @@ export default function App() {
           )}
 
           {role === "admin" && isAdmin && activeView === "hospitals" && (
-            <HospitalPanel hospitals={hospitals} />
+            <HospitalPanel
+              hospitals={hospitals}
+              notifications={notifications}
+              dismissNotification={dismissNotification}
+            />
           )}
 
           {role === "admin" && isAdmin && activeView === "surge" && (
             <SurgePanel
+              incidents={incidents}
+              ambulances={ambulances}
+              hospitals={hospitals}
+            />
+          )}
+
+          {role === "admin" && isAdmin && activeView === "analytics" && (
+            <AnalyticsPanel
               incidents={incidents}
               ambulances={ambulances}
               hospitals={hospitals}

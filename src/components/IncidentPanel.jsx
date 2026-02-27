@@ -5,6 +5,7 @@ import { fetchRoute } from '../lib/externalMaps';
 import { useNavigation } from '../hooks/useNavigation';
 import { startAmbulanceMovement } from '../lib/ambulanceSimulation';
 import { haversineDistance } from '../lib/navigation';
+import GoldenHourTimer from './GoldenHourTimer';
 
 function timeAgo(dateStr) {
   if (!dateStr) return '';
@@ -15,7 +16,7 @@ function timeAgo(dateStr) {
   return `${Math.floor(mins / 60)}h ${mins % 60}m ago`;
 }
 
-export default function IncidentPanel({ incidents, ambulances, hospitals, addIncident, updateIncidentStatus, updateAmbulanceStatus, updateAmbulanceLocation }) {
+export default function IncidentPanel({ incidents, ambulances, hospitals, addIncident, updateIncidentStatus, updateAmbulanceStatus, updateAmbulanceLocation, addNotification, clearForIncident }) {
   const [description, setDescription] = useState('');
   const [triageResult, setTriageResult] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -257,6 +258,21 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
           dispatch_route: dispatchPath,
           hospital_route: hospitalPath
         });
+
+        // ── Hospital Pre-Notification ──
+        if (bestHospital && addNotification) {
+          const etaMinutes = ambRoute?.duration
+            ? Math.ceil(ambRoute.duration / 60)
+            : Math.ceil(scoredAmbulances[0].distKm / 0.8); // rough estimate
+          addNotification(
+            bestHospital.id,
+            bestHospital.name,
+            incident,
+            nearest,
+            etaMinutes
+          );
+          console.info(`📢 Pre-notification sent to ${bestHospital.name} — ETA: ${etaMinutes}m`);
+        }
 
         const durationSeconds = ambRoute?.duration 
           ? Math.max(30, Math.ceil(ambRoute.duration / 3)) // Factor of 3 for demo simulation speed
@@ -574,6 +590,7 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
             >
               <div className="incident-card-header">
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <GoldenHourTimer createdAt={inc.created_at} priority={inc.priority} />
                   <span className={`priority-badge ${inc.priority?.toLowerCase()}`}>{inc.priority}</span>
                   <span style={{ fontSize: '0.8rem', fontWeight: 600, textTransform: 'capitalize' }}>
                     {inc.incident_type || 'Unknown'}
@@ -624,6 +641,9 @@ export default function IncidentPanel({ incidents, ambulances, hospitals, addInc
                           const amb = ambulances.find(a => a.id === ambId);
                           
                           updateIncidentStatus(inc.id, { status: 'resolved', resolved_at: new Date().toISOString() });
+                          
+                          // Clear hospital pre-notifications for this incident
+                          if (clearForIncident) clearForIncident(inc.id);
                           
                           if (ambId) {
                             updateAmbulanceStatus(ambId, 'returning');

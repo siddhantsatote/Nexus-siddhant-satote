@@ -1,4 +1,6 @@
-export default function HospitalPanel({ hospitals }) {
+import { AlertTriangle, BellRing, X } from 'lucide-react';
+
+export default function HospitalPanel({ hospitals, notifications = [], dismissNotification }) {
   return (
     <div>
       <div className="section-header">
@@ -10,7 +12,8 @@ export default function HospitalPanel({ hospitals }) {
 
       <div className="fleet-grid">
         {hospitals.map(hosp => {
-          const icuMax = (hosp.icu_beds_available || 0) + 5; // estimate
+          const hospNotifs = notifications.filter(n => n.hospitalId === hosp.id);
+          const icuMax = (hosp.icu_beds_available || 0) + 5;
           const genMax = (hosp.general_beds_available || 0) + 20;
           const icuPct = Math.min(100, ((hosp.icu_beds_available || 0) / icuMax) * 100);
           const genPct = Math.min(100, ((hosp.general_beds_available || 0) / genMax) * 100);
@@ -19,7 +22,60 @@ export default function HospitalPanel({ hospitals }) {
             <div className="hospital-card" key={hosp.id}>
               <div className="hospital-card-header">
                 <span className="hospital-name">{hosp.name}</span>
+                {hospNotifs.length > 0 && (
+                  <span className="prenotif-count-badge">
+                    {hospNotifs.length} incoming
+                  </span>
+                )}
               </div>
+
+              {/* Pre-Notification Alerts */}
+              {hospNotifs.map(notif => (
+                <div className="prenotif-banner" key={notif.id}>
+                  <div className="prenotif-header">
+                    <div className="prenotif-title">
+                      <BellRing size={14} /> Incoming Patient
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="prenotif-eta">ETA: {notif.eta}m</span>
+                      {dismissNotification && (
+                        <button
+                          className="prenotif-dismiss"
+                          onClick={() => dismissNotification(notif.id)}
+                          title="Dismiss notification"
+                        >
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="prenotif-details">
+                    <div>
+                      <div className="prenotif-detail-label">Condition</div>
+                      <div style={{ textTransform: 'capitalize', fontWeight: 600 }}>
+                        {notif.incidentType} · <span className={`priority-badge ${notif.priority?.toLowerCase()}`} style={{ fontSize: '0.6rem', padding: '1px 6px' }}>{notif.priority}</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="prenotif-detail-label">Ambulance</div>
+                      <div style={{ fontWeight: 600 }}>
+                        {notif.ambulanceCode} ({notif.ambulanceType}) — {notif.driverName}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', marginTop: 6 }}>
+                    {notif.patientInfo}
+                  </div>
+
+                  <div className="prenotif-resources">
+                    {notif.resources.map(r => (
+                      <span key={r} className="prenotif-resource-tag">{r}</span>
+                    ))}
+                  </div>
+                </div>
+              ))}
 
               <div className="bed-bars">
                 <div>

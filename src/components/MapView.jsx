@@ -2,7 +2,7 @@ import { useEffect, useRef, useMemo, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { fetchNearbyHospitals, fetchRoute } from '../lib/externalMaps';
+import { fetchNearbyHospitals, fetchRoute, clearRouteCache } from '../lib/externalMaps';
 import { useNavigation } from '../hooks/useNavigation';
 import { RefreshCcw, Navigation, RotateCcw } from 'lucide-react';
 
@@ -369,6 +369,7 @@ export default function MapView({ ambulances, hospitals, incidents, resetAmbulan
   const { calculateETA } = useNavigation(ambulances, incidents, hospitals);
 
   const handleRefresh = () => {
+    clearRouteCache();
     setRefreshKey(prev => prev + 1);
     setExternalHospitals([]);
   };
