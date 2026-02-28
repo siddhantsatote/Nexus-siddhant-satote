@@ -1,10 +1,10 @@
-import { useEffect, useRef, useMemo, useState } from 'react';
+import { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { fetchNearbyHospitals, fetchRoute, clearRouteCache } from '../lib/externalMaps';
+import { fetchNearbyHospitals, fetchRoute } from '../lib/externalMaps';
 import { useNavigation } from '../hooks/useNavigation';
-import { RefreshCcw, Navigation, RotateCcw } from 'lucide-react';
+import { RefreshCcw, Navigation, RotateCcw, Loader2 } from 'lucide-react';
 
 // Custom icon creators
 function createIcon(color, size = 12, isDriver = false) {
@@ -129,7 +129,7 @@ function MapBounds({ ambulances, hospitals, externalHospitals, incidents, refres
   return null;
 }
 
-function HospitalRouteLayer({ incidents, externalHospitals, hospitals, refreshKey }) {
+function HospitalRouteLayer({ incidents, externalHospitals, hospitals, refreshKey, onLoading }) {
   const [hospitalRoutes, setHospitalRoutes] = useState([]);
   const routeCache = useRef({});
 
@@ -140,6 +140,7 @@ function HospitalRouteLayer({ incidents, externalHospitals, hospitals, refreshKe
   useEffect(() => {
     const fetchAllRoutes = async () => {
       const activeIncidents = incidents.filter(i => (i.status === 'dispatched' || i.status === 'open') && i.location_lat);
+      if (activeIncidents.length === 0) return;
       console.log('📍 Hospital route layer - Active incidents:', activeIncidents.length);
       
       const routePromises = activeIncidents.map(async (inc) => {
@@ -203,9 +204,12 @@ function HospitalRouteLayer({ incidents, externalHospitals, hospitals, refreshKe
     };
 
     if (incidents.length > 0) {
-      fetchAllRoutes();
+      if (onLoading) onLoading(true);
+      fetchAllRoutes().finally(() => {
+        if (onLoading) onLoading(false);
+      });
     }
-  }, [incidents, externalHospitals, hospitals, refreshKey]);
+  }, [incidents, externalHospitals, hospitals, refreshKey, onLoading]);
 
   return (
     <>
@@ -236,26 +240,20 @@ function HospitalRouteLayer({ incidents, externalHospitals, hospitals, refreshKe
   );
 }
 
-function AmbulanceRouteLayer({ ambulances, incidents, refreshKey, calculateETA }) {
+function AmbulanceRouteLayer({ ambulances, incidents, refreshKey, calculateETA, onLoading }) {
   const [ambRoutes, setAmbRoutes] = useState([]);
   const routeCache = useRef({});
 
-  const [incidentEtas, setIncidentEtas] = useState({});
-
-  useEffect(() => {
-    const fetchEtas = async () => {
-      const etas = {};
-      const dispatched = incidents.filter(i => i.status === 'dispatched' && i.assigned_ambulance);
-      for (const inc of dispatched) {
-        const amb = ambulances.find(a => a.id === inc.assigned_ambulance);
-        if (amb?.location_lat && inc.location_lat) {
-          const result = await calculateETA(amb.location_lat, amb.location_lng, inc.location_lat, inc.location_lng);
-          if (result) etas[inc.id] = result.eta;
-        }
+  const incidentEtas = useMemo(() => {
+    const etas = {};
+    incidents.filter(i => i.status === 'dispatched' && i.assigned_ambulance).forEach(inc => {
+      const amb = ambulances.find(a => a.id === inc.assigned_ambulance);
+      if (amb && amb.location_lat && inc.location_lat) {
+        const result = calculateETA(amb.location_lat, amb.location_lng, inc.location_lat, inc.location_lng);
+        if (result) etas[inc.id] = result.eta;
       }
-      setIncidentEtas(etas);
-    };
-    fetchEtas();
+    });
+    return etas;
   }, [incidents, ambulances, calculateETA]);
 
   useEffect(() => {
@@ -265,6 +263,7 @@ function AmbulanceRouteLayer({ ambulances, incidents, refreshKey, calculateETA }
   useEffect(() => {
     const fetchAllRoutes = async () => {
       const activeIncidents = incidents.filter(i => i.location_lat && (i.status === 'dispatched' || i.status === 'open'));
+      if (activeIncidents.length === 0) return;
       console.log('🚑 Ambulance route layer - Active incidents:', activeIncidents.length);
       
       const routePromises = activeIncidents.map(async (inc) => {
@@ -329,9 +328,12 @@ function AmbulanceRouteLayer({ ambulances, incidents, refreshKey, calculateETA }
     };
 
     if (incidents.length > 0) {
-      fetchAllRoutes();
+      if (onLoading) onLoading(true);
+      fetchAllRoutes().finally(() => {
+        if (onLoading) onLoading(false);
+      });
     }
-  }, [incidents, ambulances, refreshKey]);
+  }, [incidents, ambulances, refreshKey, onLoading]);
 
   return (
     <>
@@ -366,10 +368,15 @@ function AmbulanceRouteLayer({ ambulances, incidents, refreshKey, calculateETA }
 export default function MapView({ ambulances, hospitals, incidents, resetAmbulancePositions }) {
   const [externalHospitals, setExternalHospitals] = useState([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [ambLoading, setAmbLoading] = useState(false);
+  const [hospLoading, setHospLoading] = useState(false);
   const { calculateETA } = useNavigation(ambulances, incidents, hospitals);
 
+  const handleAmbLoading = useCallback((loading) => setAmbLoading(loading), []);
+  const handleHospLoading = useCallback((loading) => setHospLoading(loading), []);
+  const isCalculatingRoutes = ambLoading || hospLoading;
+
   const handleRefresh = () => {
-    clearRouteCache();
     setRefreshKey(prev => prev + 1);
     setExternalHospitals([]);
   };
@@ -420,6 +427,7 @@ export default function MapView({ ambulances, hospitals, incidents, resetAmbulan
           incidents={incidents} 
           refreshKey={refreshKey}
           calculateETA={calculateETA}
+          onLoading={handleAmbLoading}
         />
 
         <HospitalRouteLayer 
@@ -427,6 +435,7 @@ export default function MapView({ ambulances, hospitals, incidents, resetAmbulan
           hospitals={hospitals}
           externalHospitals={externalHospitals}
           refreshKey={refreshKey}
+          onLoading={handleHospLoading}
         />
 
           {/* Ambulance markers */}
@@ -535,6 +544,43 @@ export default function MapView({ ambulances, hospitals, incidents, resetAmbulan
           </Marker>
         ))}
       </MapContainer>
+
+      {/* Loading Overlay */}
+      {isCalculatingRoutes && (
+        <div style={{
+          position: 'absolute',
+          top: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
+          zIndex: 1000,
+          background: 'var(--bg-card)',
+          border: '1px solid var(--border-default)',
+          borderRadius: 'var(--radius-xl)',
+          padding: '8px 16px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px',
+          boxShadow: 'var(--shadow-lg)'
+        }}>
+          <Loader2 size={18} className="spin-animation" style={{ color: 'var(--accent-blue)' }} />
+          <style>
+            {`
+              @keyframes spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+              }
+              .spin-animation {
+                animation: spin 1s linear infinite;
+              }
+            `}
+          </style>
+          <span style={{
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            color: 'var(--text-primary)'
+          }}>Calculating Routes...</span>
+        </div>
+      )}
 
       {/* Map Action Buttons */}
       <div className="map-actions" style={{

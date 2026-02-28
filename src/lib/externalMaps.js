@@ -53,129 +53,125 @@ export async function fetchNearbyHospitals(lat, lng, radiusInMeters = 5000) {
   }
 }
 
-const routeCache = new Map();
-
-/** Clear all cached routes so they can be re-fetched from OSRM */
-export function clearRouteCache() {
-  routeCache.clear();
-  console.log('🗑️ Route cache cleared');
-}
-
 /**
- * Generate a road-like fallback route using L-shaped turns on the grid.
- * Instead of a straight diagonal line, creates a path that mimics turning
- * at intersections — much more realistic on a map.
+ * Generate an approximate route with multiple waypoints
+ * This creates a path that curves through the map rather than straight line
  */
-function generateStableRoute(start, end) {
+function generateApproximateRoute(start, end) {
   const [startLat, startLng] = start;
   const [endLat, endLng] = end;
-
-  const midLat = (startLat + endLat) / 2;
-  const midLng = (startLng + endLng) / 2;
-  const dist = Math.hypot(endLat - startLat, endLng - startLng);
-
-  // For short distances, use a simple L-shaped turn
-  if (dist < 0.02) {
-    return [
-      [startLat, startLng],
-      [startLat, endLng], // Go horizontal first
-      [endLat, endLng],
-    ];
+  
+  const distance = Math.hypot(endLat - startLat, endLng - startLng);
+  const numWaypoints = Math.ceil(distance / 0.01) + 1; // Add waypoint every ~1km
+  
+  const points = [start];
+  
+  for (let i = 1; i < numWaypoints - 1; i++) {
+    const t = i / (numWaypoints - 1);
+    const lat = startLat + (endLat - startLat) * t + (Math.random() - 0.5) * distance * 0.05;
+    const lng = startLng + (endLng - startLng) * t + (Math.random() - 0.5) * distance * 0.05;
+    points.push([lat, lng]);
   }
-
-  // For longer routes, create multi-segment L-turns that mimic road navigation
-  const segments = Math.max(3, Math.ceil(dist / 0.01));
-  const points = [[startLat, startLng]];
-
-  for (let i = 1; i < segments; i++) {
-    const t = i / segments;
-    // Alternate between moving along lat and lng to create step-like pattern
-    if (i % 2 === 1) {
-      // Move along latitude (N-S road)
-      const lat = startLat + (endLat - startLat) * t;
-      const lng = points[points.length - 1][1]; // Keep same lng
-      points.push([lat, lng]);
-    } else {
-      // Move along longitude (E-W road)  
-      const lat = points[points.length - 1][0]; // Keep same lat
-      const lng = startLng + (endLng - startLng) * t;
-      points.push([lat, lng]);
-    }
-  }
-
-  points.push([endLat, endLng]);
+  
+  points.push(end);
   return points;
 }
 
+// Persistent cache using localStorage
+function getCachedRoute(key) {
+  try {
+    const cached = localStorage.getItem(`route_${key}`);
+    if (cached) return JSON.parse(cached);
+  } catch(e) {}
+  return null;
+}
+
+function setCachedRoute(key, data) {
+  try {
+    localStorage.setItem(`route_${key}`, JSON.stringify(data));
+  } catch(e) {}
+}
+
+/** Clear all cached routes so they can be re-fetched from OSRM */
+export function clearRouteCache() {
+  try {
+    const keys = Object.keys(localStorage).filter(k => k.startsWith('route_'));
+    keys.forEach(k => localStorage.removeItem(k));
+    console.log(`🗑️ Cleared ${keys.length} cached routes`);
+  } catch (e) {}
+}
+
+// Request queue to prevent spamming OSRM and getting IP banned/throttled
+let requestQueue = Promise.resolve();
+
 /**
- * Fetch a driving route between two points using OSRM with fallbacks.
- * Uses longer timeout and retries across multiple OSRM servers.
+ * Fetch a driving route between two points using OSRM with fallbacks
  * @param {[number, number]} start [lat, lng]
  * @param {[number, number]} end [lat, lng]
- * @returns {Promise<Object|null>} Route data with geometry and duration, or null if failed
+ * @returns {Promise<Object|null>} Route data with geometry and duration
  */
 export async function fetchRoute(start, end) {
-  if (!start || !end) return null;
-  
-  const cacheKey = `${start[0].toFixed(5)},${start[1].toFixed(5)}-${end[0].toFixed(5)},${end[1].toFixed(5)}`;
-  if (routeCache.has(cacheKey)) return routeCache.get(cacheKey);
+  if (!start || !end || start.length < 2 || end.length < 2) return null;
 
-  // Try each OSRM endpoint with generous timeout
-  for (const baseUrl of OSRM_ENDPOINTS) {
-    try {
-      const url = `${baseUrl}${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
-      const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  const startLat = start[0], startLng = start[1];
+  const endLat = end[0], endLng = end[1];
+
+  // Round coordinates to ~11 meters to increase cache hits
+  const cacheKey = `${startLat.toFixed(4)},${startLng.toFixed(4)}-${endLat.toFixed(4)},${endLng.toFixed(4)}`;
+  
+  // 1. Check persistent cache first (instant, 0 lag!)
+  const cached = getCachedRoute(cacheKey);
+  if (cached) return cached;
+
+  // 2. Queue the request so we don't blast OSRM with 10 parallel requests
+  return new Promise((resolve) => {
+    requestQueue = requestQueue.then(async () => {
+      // Throttle to max ~2.5 requests per second to avoid OSRM rate limits
+      await new Promise(r => setTimeout(r, 400));
       
-      if (response.ok) {
-        const data = await response.json();
-        if (data.code === 'Ok' && data.routes?.length > 0) {
-          const route = data.routes[0];
-          const result = {
-            geometry: route.geometry.coordinates.map(c => [c[1], c[0]]),
-            distance: route.distance,
-            duration: route.duration
-          };
-          console.log(`✓ OSRM route fetched: ${result.geometry.length} road points from ${baseUrl.split('/')[2]}`);
-          routeCache.set(cacheKey, result);
-          return result;
+      for (const baseUrl of OSRM_ENDPOINTS) {
+        const url = `${baseUrl}${startLng},${startLat};${endLng},${endLat}?overview=full&geometries=geojson`;
+        try {
+          // Fast timeout so UI doesn't hang if server is dead
+          const response = await fetch(url, { signal: AbortSignal.timeout(2500) });
+          if (!response.ok) continue;
+          
+          const data = await response.json();
+          if (data.code === 'Ok' && data.routes?.length > 0) {
+            const route = data.routes[0];
+            const geometry = route.geometry.coordinates.map(coord => [coord[1], coord[0]]);
+            
+            if (geometry.length > 1) {
+              const result = {
+                geometry,
+                distance: route.distance,
+                duration: route.duration
+              };
+              console.log('✓ Route fetched & cached from OSRM');
+              setCachedRoute(cacheKey, result); // Save for future page reloads
+              resolve(result);
+              return;
+            }
+          }
+        } catch (error) {
+          // ignore individual endpoint timeouts, will try next
         }
       }
-    } catch (e) {
-      console.warn(`OSRM timeout/error (${baseUrl.split('/')[2]}):`, e.message);
-    }
-  }
 
-  // Second attempt: retry the primary endpoint with longer timeout
-  try {
-    const url = `${OSRM_ENDPOINTS[0]}${start[1]},${start[0]};${end[1]},${end[0]}?overview=full&geometries=geojson`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(12000) });
-    if (response.ok) {
-      const data = await response.json();
-      if (data.code === 'Ok' && data.routes?.length > 0) {
-        const route = data.routes[0];
-        const result = {
-          geometry: route.geometry.coordinates.map(c => [c[1], c[0]]),
-          distance: route.distance,
-          duration: route.duration
-        };
-        console.log(`✓ OSRM retry succeeded: ${result.geometry.length} road points`);
-        routeCache.set(cacheKey, result);
-        return result;
-      }
-    }
-  } catch (e) {
-    console.warn('OSRM retry also failed:', e.message);
-  }
-
-  // Fallback: road-like L-turn path
-  console.warn('⚠️ All OSRM servers failed — using grid-based fallback route');
-  const geometry = generateStableRoute(start, end);
-  const distance = Math.hypot(end[0] - start[0], end[1] - start[1]) * 111319;
-  const result = {
-    geometry,
-    distance,
-    duration: distance / 13 // ~45km/h
-  };
-  routeCache.set(cacheKey, result);
-  return result;
+      // Fallback if all OSRM servers fail
+      console.log('⚠ Using approximate route (OSRM unavailable)');
+      const distance = Math.hypot(endLat - startLat, endLng - startLng) * 111000;
+      const result = {
+        geometry: generateApproximateRoute(start, end),
+        distance,
+        duration: Math.max(300, Math.ceil(distance / 15))
+      };
+      
+      // We don't cache the fallback so it can retry OSRM later
+      resolve(result);
+    }).catch((e) => {
+      console.error("Route queue error:", e);
+      resolve(null);
+    });
+  });
 }

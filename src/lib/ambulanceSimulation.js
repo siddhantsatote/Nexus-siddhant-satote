@@ -1,4 +1,9 @@
-import { haversineDistance } from './navigation';
+/**
+ * Calculate distance between two points
+ */
+function getDistance(lat1, lng1, lat2, lng2) {
+  return Math.hypot(lat2 - lat1, lng2 - lng1);
+}
 
 /**
  * Ambulance Movement Simulation following a specific path
@@ -8,14 +13,14 @@ export function createPathFollowingSimulation(path, durationSeconds = 300) {
     throw new Error('Path must contain at least 2 points');
   }
 
-  // Pre-calculate segments and cumulative distances using Haversine
+  // Pre-calculate segments and cumulative distances
   const segments = [];
   let totalPathDistance = 0;
 
   for (let i = 0; i < path.length - 1; i++) {
     const p1 = path[i];
     const p2 = path[i + 1];
-    const dist = haversineDistance(p1[0], p1[1], p2[0], p2[1]);
+    const dist = getDistance(p1[0], p1[1], p2[0], p2[1]);
     segments.push({
       start: p1,
       end: p2,

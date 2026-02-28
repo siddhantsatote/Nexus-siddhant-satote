@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { useState } from "react";
 import {
   AlertTriangle,
   Truck,
@@ -9,7 +8,6 @@ import {
 } from "lucide-react";
 import "./index.css";
 import { useRealtimeData } from "./hooks/useRealtimeData";
-import { useNotifications } from "./hooks/useNotifications";
 import Sidebar from "./components/Sidebar";
 import TopBar from "./components/TopBar";
 import MapView from "./components/MapView";
@@ -19,7 +17,6 @@ import HospitalPanel from "./components/HospitalPanel";
 import SurgePanel from "./components/SurgePanel";
 import BookingPortal from "./components/BookingPortal";
 import DriverConsole from "./components/DriverConsole";
-import AnalyticsPanel from "./components/AnalyticsPanel";
 
 function StatsRow({ incidents, ambulances, hospitals }) {
   const p1 = incidents.filter(
@@ -34,117 +31,91 @@ function StatsRow({ incidents, ambulances, hospitals }) {
     0,
   );
 
-  const stats = [
-    { value: p1, label: "Critical (P1)", iconColor: "red", Icon: AlertTriangle },
-    { value: p2, label: "Urgent (P2)", iconColor: "yellow", Icon: Activity },
-    { value: available, label: "Available Units", iconColor: "green", Icon: Truck },
-    { value: totalIcu, label: "ICU Beds", iconColor: "blue", Icon: Building2 },
-  ];
-
   return (
     <div className="stats-row">
-      {stats.map((s, i) => (
-        <motion.div
-          key={s.label}
-          className="stat-card"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * 0.08, duration: 0.4, ease: "easeOut" }}
-        >
-          <div className={`stat-icon ${s.iconColor}`}>
-            <s.Icon size={20} />
-          </div>
-          <div>
-            <AnimatedCounter value={s.value} />
-            <div className="stat-label">{s.label}</div>
-          </div>
-        </motion.div>
-      ))}
+      <div className="stat-card">
+        <div className="stat-icon red">
+          <AlertTriangle size={20} />
+        </div>
+        <div>
+          <div className="stat-value">{p1}</div>
+          <div className="stat-label">Critical (P1)</div>
+        </div>
+      </div>
+      <div className="stat-card">
+        <div className="stat-icon yellow">
+          <Activity size={20} />
+        </div>
+        <div>
+          <div className="stat-value">{p2}</div>
+          <div className="stat-label">Urgent (P2)</div>
+        </div>
+      </div>
+      <div className="stat-card">
+        <div className="stat-icon green">
+          <Truck size={20} />
+        </div>
+        <div>
+          <div className="stat-value">{available}</div>
+          <div className="stat-label">Available Units</div>
+        </div>
+      </div>
+      <div className="stat-card">
+        <div className="stat-icon blue">
+          <Building2 size={20} />
+        </div>
+        <div>
+          <div className="stat-value">{totalIcu}</div>
+          <div className="stat-label">ICU Beds</div>
+        </div>
+      </div>
     </div>
   );
 }
-
-function AnimatedCounter({ value }) {
-  const [display, setDisplay] = useState(0);
-  useEffect(() => {
-    if (value === display) return;
-    const step = value > display ? 1 : -1;
-    const timer = setInterval(() => {
-      setDisplay((prev) => {
-        const next = prev + step;
-        if ((step > 0 && next >= value) || (step < 0 && next <= value)) {
-          clearInterval(timer);
-          return value;
-        }
-        return next;
-      });
-    }, 40);
-    return () => clearInterval(timer);
-  }, [value]);
-  return <div className="stat-value">{display}</div>;
-}
-
-const stagger = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.12, delayChildren: 0.1 } },
-};
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 20 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
-};
 
 function Landing({ onSelectRole }) {
   return (
     <div className="landing-shell">
       <div className="landing-frame">
-        <motion.main
-          className="landing-main"
-          variants={stagger}
-          initial="hidden"
-          animate="show"
-        >
-          <motion.div className="landing-pill" variants={fadeUp}>
-            🚑 PRAANA · Emergency Network
-          </motion.div>
-          <motion.h1 className="landing-title" variants={fadeUp}>
-            AI-Powered{" "}
-            <span className="landing-gradient">Emergency Response</span> for
-            Every Second That Counts
-          </motion.h1>
-          <motion.p className="landing-subtitle" variants={fadeUp}>
-            Intelligent triage, real-time dispatch, and ICU-aware routing —
-            one platform for citizens, dispatchers, and drivers.
-          </motion.p>
+        <main className="landing-main">
+          <div className="landing-pill">PRAANA · Emergency Network</div>
+          <h1 className="landing-title">
+            One-click for{" "}
+            <span className="landing-gradient">city-wide ambulance response</span>
+          </h1>
+          <p className="landing-subtitle">
+            A single pane of glass for citizens, control rooms and on-road
+            drivers — without exposing their consoles to each other.
+          </p>
 
-          <motion.div className="landing-role-buttons" variants={fadeUp}>
-            <motion.button
+          <div className="landing-role-buttons">
+            <button
               className="btn btn-primary btn-large"
               onClick={() => onSelectRole("user")}
-              whileHover={{ scale: 1.03, boxShadow: '0 6px 20px rgba(59,130,246,0.25)' }}
-              whileTap={{ scale: 0.97 }}
             >
-              Book Ambulance
-            </motion.button>
-            <motion.button
+              Book ambulance
+            </button>
+            <button
               className="btn btn-outline btn-large"
               onClick={() => onSelectRole("admin")}
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
             >
               <ShieldCheck size={16} />
-              Admin Console
-            </motion.button>
-            <motion.button
+              Admin console
+            </button>
+            <button
               className="btn btn-outline btn-large"
               onClick={() => onSelectRole("driver")}
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
             >
-              Driver Login
-            </motion.button>
-          </motion.div>
-        </motion.main>
+              Driver login
+            </button>
+          </div>
+
+          <div className="landing-meta-row">
+            <span>Live Pune demo • <span className="dot-live" /> Status: healthy</span>
+            <span>Sub-10s dispatch, ICU-aware routing, surge load AI</span>
+          </div>
+        </main>
+
       </div>
     </div>
   );
@@ -248,30 +219,14 @@ export default function App() {
     resetAmbulancePositions,
     deleteAmbulance,
   } = useRealtimeData();
-  const {
-    notifications,
-    addNotification,
-    dismissNotification,
-    clearForIncident,
-  } = useNotifications();
 
   if (loading) {
     return (
       <div className="loading-screen">
-        <motion.div
-          className="loading-spinner"
-          initial={{ opacity: 0, scale: 0.5 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-        />
-        <motion.div
-          style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
+        <div className="loading-spinner"></div>
+        <div style={{ color: "var(--text-secondary)", fontSize: "0.9rem" }}>
           Initializing PRAANA Command Center…
-        </motion.div>
+        </div>
       </div>
     );
   }
@@ -295,8 +250,7 @@ export default function App() {
       nextView === "incidents" ||
       nextView === "fleet" ||
       nextView === "hospitals" ||
-      nextView === "surge" ||
-      nextView === "analytics"
+      nextView === "surge"
     );
   }
 
@@ -334,8 +288,8 @@ export default function App() {
           activeView={activeView}
           setActiveView={handleSetView}
           incidents={incidents}
+          usingDemo={usingDemo}
           isAdmin={isAdmin}
-          notifications={notifications}
           onAdminLogout={() => {
             setIsAdmin(false);
             setRole("entry");
@@ -393,8 +347,6 @@ export default function App() {
                   updateIncidentStatus={updateIncidentStatus}
                   updateAmbulanceStatus={updateAmbulanceStatus}
                   updateAmbulanceLocation={updateAmbulanceLocation}
-                  addNotification={addNotification}
-                  clearForIncident={clearForIncident}
                 />
               </div>
             </>
@@ -417,8 +369,6 @@ export default function App() {
                     updateIncidentStatus={updateIncidentStatus}
                     updateAmbulanceStatus={updateAmbulanceStatus}
                     updateAmbulanceLocation={updateAmbulanceLocation}
-                    addNotification={addNotification}
-                    clearForIncident={clearForIncident}
                   />
                 </div>
                 <MapView
@@ -441,23 +391,11 @@ export default function App() {
           )}
 
           {role === "admin" && isAdmin && activeView === "hospitals" && (
-            <HospitalPanel
-              hospitals={hospitals}
-              notifications={notifications}
-              dismissNotification={dismissNotification}
-            />
+            <HospitalPanel hospitals={hospitals} />
           )}
 
           {role === "admin" && isAdmin && activeView === "surge" && (
             <SurgePanel
-              incidents={incidents}
-              ambulances={ambulances}
-              hospitals={hospitals}
-            />
-          )}
-
-          {role === "admin" && isAdmin && activeView === "analytics" && (
-            <AnalyticsPanel
               incidents={incidents}
               ambulances={ambulances}
               hospitals={hospitals}
